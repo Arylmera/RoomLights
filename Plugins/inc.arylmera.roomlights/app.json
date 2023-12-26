@@ -1,3 +1,74 @@
 {
-  "_comment": "This file is generated. Please edit .homeycompose/app.json instead."
+  "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
+  "id": "inc.arylmera.roomlights",
+  "version": "1.0.0",
+  "compatibility": ">=5.0.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "roomLights"
+  },
+  "description": {
+    "en": "A little plugin to control all the lights of a room at once"
+  },
+  "category": [
+    "lights"
+  ],
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "Guillaume Lemer",
+    "email": "guillaume@lemer.be"
+  },
+  "flow": {
+    "actions": [
+      {
+        "title": {
+          "en": "SetRoomLights"
+        },
+        "hint": {
+          "en": "Set the status of the all the lights in a room"
+        },
+        "titleFormatted": {
+          "en": "Set lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+        },
+        "args": [
+          {
+            "type": "text",
+            "name": "room",
+            "placeholder": {
+              "en": "Bedroom"
+            }
+          },
+          {
+            "type": "number",
+            "name": "brightness",
+            "placeholder": {
+              "en": "0.5"
+            },
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          },
+          {
+            "type": "number",
+            "name": "temperature",
+            "placeholder": {
+              "en": "0.5"
+            },
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          }
+        ],
+        "id": "setroomlights"
+      }
+    ]
+  }
 }

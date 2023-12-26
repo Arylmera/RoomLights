@@ -1,0 +1,40 @@
+{
+	"title": {
+		"en": "SetRoomLights"
+	},
+	"hint": {
+		"en": "Set the status of the all the lights in a room"
+	},
+	"titleFormatted": {
+		"en": "Set lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+	},
+	"args": [
+		{
+			"type": "text",
+			"name": "room",
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		},
+		{
+			"type": "number",
+			"name": "brightness",
+			"placeholder": {
+				"en": "0.5"
+			},
+			"min": 0,
+			"max": 1,
+			"step": 0.01
+		},
+		{
+			"type": "number",
+			"name": "temperature",
+			"placeholder": {
+				"en": "0.5"
+			},
+			"min": 0,
+			"max": 1,
+			"step": 0.01
+		}
+	]
+}
