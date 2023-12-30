@@ -92,10 +92,9 @@ class RoomLights extends Homey.App {
 		const zoneId = await this.getZoneId(zone);
 		this.devices.forEach(async (device: any) => {
 			if ((await this.isLight(device)) && device.zone === zoneId) {
-				device.setCapabilityValue('light_temperature', temperature);
-
 				if (brightness !== 0) {
 					device.setCapabilityValue('dim', brightness);
+					await device.setCapabilityValue('light_temperature', temperature);
 				} else {
 					await device.setCapabilityValue('onoff', false);
 				}
