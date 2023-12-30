@@ -16,7 +16,9 @@
   "category": [
     "lights"
   ],
-  "permissions": [],
+  "permissions": [
+    "homey:manager:api"
+  ],
   "images": {
     "small": "/assets/images/small.png",
     "large": "/assets/images/large.png",
@@ -36,7 +38,7 @@
           "en": "Set the status of the all the lights in a room"
         },
         "titleFormatted": {
-          "en": "Set lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+          "en": "Set alls the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
         },
         "args": [
           {
