@@ -6,7 +6,7 @@
 		"en": "Set the status of the all the lights in a room"
 	},
 	"titleFormatted": {
-		"en": "Set alls the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+		"en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
 	},
 	"args": [
 		{
