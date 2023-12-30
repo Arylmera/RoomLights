@@ -1,13 +1,20 @@
-const arguments = JSON.parse(args[0]);
+//const arguments = JSON.parse(args[0]);
+const arguments = 
+{
+"room" : "Cuisine",
+"brightness" : 0.5,
+"temperature" : 0.5
+}
 
 const selectedZoneName = arguments.room;
 const brightness = arguments.brightness;
 const temp = arguments.temperature;
+const color = arguments;
 
-if (brightness < 0 || brightness > 1) {
+if (brightness && (brightness < 0 || brightness > 1)) {
 	throw new Error("Please send the brightness as the second parameter between 0 and 1 or don't send it");
 }
-if (temp < 0 || temp > 1) {
+if (temp && (temp < 0 || temp > 1)) {
 	throw new Error("Please send the temp as the third parameter between 0 and 1 or don't send it");
 }
 
@@ -17,14 +24,13 @@ const zones = Object.values(await Homey.zones.getZones());
 
 // setup asked zone and light from selected zone
 let selectedZoneId = undefined;
-let zoneDevices = [];
-
 for (const zone of Object.values(zones)) {
 	if (zone.name == selectedZoneName) {
 		selectedZoneId = zone.id;
 		break;
 	}
 }
+
 if (selectedZoneId == undefined) {
 	let roomNames = [];
 	for (const zone of Object.values(zones)) {
@@ -35,22 +41,17 @@ if (selectedZoneId == undefined) {
 }
 
 for (const device of devices) {
-	if (device.zone == selectedZoneId && device.class == "light") {
-		zoneDevices.push(device);
-	}
-}
+	if (device.zone == selectedZoneId && device.capabilities.includes("dim")) {
+		if (temp != undefined && device.capabilities.includes("light_temperature")) {
+			await device.setCapabilityValue("light_temperature", temp);
+		}
 
-// setup lights of the zone
-for (const device of zoneDevices) {
-	if (temp != undefined) {
-		await device.setCapabilityValue("light_temperature", temp);
-	}
-
-	if (brightness != undefined) {
-		if (brightness != 0) {
-			device.setCapabilityValue("dim", brightness);
-		} else {
-			device.setCapabilityValue("onoff", false);
+		if (brightness != undefined) {
+			if (brightness != 0) {
+				device.setCapabilityValue("dim", brightness);
+			} else {
+				device.setCapabilityValue("onoff", false);
+			}
 		}
 	}
 }
