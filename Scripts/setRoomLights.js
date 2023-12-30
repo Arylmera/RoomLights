@@ -1,10 +1,4 @@
-//const arguments = JSON.parse(args[0]);
-const arguments = 
-{
-"room" : "Cuisine",
-"brightness" : 0.5,
-"temperature" : 0.5
-}
+const arguments = JSON.parse(args[0]);
 
 const selectedZoneName = arguments.room;
 const brightness = arguments.brightness;
