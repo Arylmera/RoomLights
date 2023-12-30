@@ -1,12 +1,18 @@
-//const arguments = JSON.parse(args[0]);
-
+/**
+ * Exemple of arguments
+ **
 const arguments = {
   room: "Salon",
   brightness: 0.4,
   temperature: 0.9,
-  color: 1,
+  color: 0.5,
   saturation: 1,
 };
+ ** 
+ * 
+ */
+
+const arguments = JSON.parse(args[0]);
 
 const selectedZoneName = arguments.room;
 const brightness = arguments.brightness;
@@ -33,7 +39,7 @@ const zones = Object.values(await Homey.zones.getZones());
 
 // setup asked zone and light from selected zone
 let selectedZoneId = undefined;
-for (const zone of Object.values(zones)) {
+for (const zone of zones) {
   if (zone.name == selectedZoneName) {
     selectedZoneId = zone.id;
     break;
@@ -42,7 +48,7 @@ for (const zone of Object.values(zones)) {
 
 if (selectedZoneId == undefined) {
   let roomNames = [];
-  for (const zone of Object.values(zones)) {
+  for (const zone of zones) {
     log(zone.name);
     roomNames.push(zone.name);
   }
