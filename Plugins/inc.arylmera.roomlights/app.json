@@ -38,7 +38,7 @@
           "en": "Set the status of the all the lights in a room"
         },
         "titleFormatted": {
-          "en": "Set alls the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
         },
         "args": [
           {
@@ -79,7 +79,7 @@
           "en": "Set the brightness and the color of all the lights in a room"
         },
         "titleFormatted": {
-          "en": "Set alls the lights of [[room]] to brightness [[brightness]] and Color [[color]]"
+          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Color [[color]]"
         },
         "args": [
           {
