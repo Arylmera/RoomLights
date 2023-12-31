@@ -19,11 +19,13 @@ class RoomLights extends Homey.App {
 		this.zones = Object.values(await this.homeyApi.zones.getZones());
 
 		for (const zone of this.zones.values()) {
-			let filterZone = {};
-			filterZone.id = zone.id;
-			filterZone.name = zone.name;
-			filterZone.desciption = zone.name;
-			this.filterZone.push(filterZone);
+			if (!zone.name.startsWith("_")) {
+				let filterZone = {};
+				filterZone.id = zone.id;
+				filterZone.name = zone.name;
+				filterZone.desciption = zone.name;
+				this.filterZone.push(filterZone);
+			}
 		}
 
 		this.homey.flow

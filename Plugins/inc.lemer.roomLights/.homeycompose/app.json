@@ -13,10 +13,11 @@
 	"category": ["lights"],
 	"permissions": ["homey:manager:api"],
 	"images": {
-		"small": "/assets/images/small.png",
-		"large": "/assets/images/large.png",
-		"xlarge": "/assets/images/xlarge.png"
+		"small": "/assets/images/roomLights.png",
+		"large": "/assets/images/roomLights.png",
+		"xlarge": "/assets/images/roomLights.png"
 	},
+	"brandColor": "#308511",
 	"author": {
 		"name": "Guillaume Lemer",
 		"email": "guillaume@lemer.be"
