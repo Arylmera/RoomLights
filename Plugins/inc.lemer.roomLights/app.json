@@ -1,6 +1,6 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
-  "id": "inc.arylmera.roomlights",
+  "id": "inc.lemer.roomLights",
   "version": "1.0.0",
   "compatibility": ">=5.0.0",
   "sdk": 3,
@@ -8,10 +8,10 @@
     "local"
   ],
   "name": {
-    "en": "roomLights"
+    "en": "RoomLights"
   },
   "description": {
-    "en": "A little plugin to control all the lights of a room at once"
+    "en": "Let you control all the lights in a defined Homey zone at once"
   },
   "category": [
     "lights"

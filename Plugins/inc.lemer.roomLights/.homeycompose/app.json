@@ -1,0 +1,24 @@
+{
+	"id": "inc.lemer.roomLights",
+	"version": "1.0.0",
+	"compatibility": ">=5.0.0",
+	"sdk": 3,
+	"platforms": ["local"],
+	"name": {
+		"en": "RoomLights"
+	},
+	"description": {
+		"en": "Let you control all the lights in a defined Homey zone at once"
+	},
+	"category": ["lights"],
+	"permissions": ["homey:manager:api"],
+	"images": {
+		"small": "/assets/images/small.png",
+		"large": "/assets/images/large.png",
+		"xlarge": "/assets/images/xlarge.png"
+	},
+	"author": {
+		"name": "Guillaume Lemer",
+		"email": "guillaume@lemer.be"
+	}
+}

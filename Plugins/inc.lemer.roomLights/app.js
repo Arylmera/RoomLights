@@ -1,57 +1,63 @@
-'use strict';
+"use strict";
 
-import Homey from 'homey';
-const { HomeyAPI } = require('homey-api');
+const Homey = require("homey");
+const { HomeyAPI } = require("homey-api");
 
-class RoomLights extends Homey.App {
+class MyApp extends Homey.App {
 	devices = [];
 	zones = [];
 	zonesNames = [];
-
 	/**
 	 * onInit is called when the app is initialized.
 	 */
 	async onInit() {
-		const homeyApi = await HomeyAPI.createAppAPI({
+		this.homeyApi = await HomeyAPI.createAppAPI({
 			homey: this.homey,
 		});
 
-		this.devices = Object.values(await homeyApi.devices.getDevices());
-		this.zones = Object.values(await homeyApi.zones.getZones());
+		this.devices = Object.values(await this.homeyApi.devices.getDevices());
+		this.zones = Object.values(await this.homeyApi.zones.getZones());
 
-		const setRoomLights = this.homey.flow.getActionCard('setroomlights');
+		for (const zone of this.zones.values()) {
+			console.log(zone);
+
+			this.zonesNames.push(zone.name);
+		}
+
+		const setRoomLights = this.homey.flow.getActionCard("setroomlights");
 		setRoomLights.registerRunListener(async (args) => {
 			const { room, brightness, temperature } = args;
 			await this.setLightsBrightness(room, brightness, temperature);
 		});
 
-		const setRoomLightsColors = this.homey.flow.getActionCard('setroomlightscolors');
+		const setRoomLightsColors = this.homey.flow.getActionCard("setroomlightscolors");
 		setRoomLightsColors.registerRunListener(async (args) => {
 			const { room, brightness, color } = args;
 			await this.setRoomLightsColors(room, brightness, color);
 		});
 
-		this.log('RoomLights has been initialized');
+		this.log("MyApp has been initialized");
 	}
 
-	async getZoneId(room: string) {
-		let selectedZoneId = '';
-		this.zones.forEach((zone: any) => {
+	async getZoneId(room) {
+		let selectedZoneId = "";
+		const roomNames = [];
+
+		this.zones.forEach((zone) => {
 			if (zone.name === room) {
 				selectedZoneId = zone.id;
+				roomNames.push(zone.name);
 			}
 		});
-		if (selectedZoneId === '') {
-			const roomNames: string[] = [];
-			this.zones.forEach((zone: any) => {
-				roomNames.push(zone.name);
-			});
+
+		if (selectedZoneId === "") {
 			throw new Error(`Please send the name of the room as the first argument : ${roomNames}`);
 		}
+
 		return selectedZoneId;
 	}
 
-	async parseHexToHSL(hex: string) {
+	async parseHexToHSL(hex) {
 		let b = parseInt(hex.substring(5, 7), 16) / 255;
 		let g = parseInt(hex.substring(3, 5), 16) / 255;
 		let r = parseInt(hex.substring(1, 3), 16) / 255;
@@ -85,45 +91,45 @@ class RoomLights extends Homey.App {
 		return [+h.toFixed(3), +s.toFixed(3), +l.toFixed(3)];
 	}
 
-	async isLight(device: any) {
-		return device.class === 'light' && device.capabilities.includes('dim');
+	async isLight(device) {
+		return device.class === "light" && device.capabilities.includes("dim");
 	}
 
-	async setLightsBrightness(zone: string, brightness: number, temperature: number) {
+	async setLightsBrightness(zone, brightness, temperature) {
 		const zoneId = await this.getZoneId(zone);
-		this.devices.forEach(async (device: any) => {
+		this.devices.forEach(async (device) => {
 			if ((await this.isLight(device)) && device.zone === zoneId) {
 				if (brightness !== 0) {
-					device.setCapabilityValue('dim', brightness);
-					await device.setCapabilityValue('light_temperature', temperature);
+					device.setCapabilityValue("dim", brightness);
+					await device.setCapabilityValue("light_temperature", temperature);
 				} else {
-					await device.setCapabilityValue('onoff', false);
+					await device.setCapabilityValue("onoff", false);
 				}
 			}
 		});
 	}
 
-	async setLightsColors(zone: string, brightness: number, color: number, saturation: number) {
+	async setLightsColors(zone, brightness, color, saturation) {
 		const zoneId = await this.getZoneId(zone);
-		this.devices.forEach(async (device: any) => {
+		this.devices.forEach(async (device) => {
 			if ((await this.isLight(device)) && device.zone === zoneId) {
-				if (device.capabilities.includes('light_hue')) {
-					await device.setCapabilityValue('light_hue', color);
-					await device.setCapabilityValue('light_saturation', saturation);
+				if (device.capabilities.includes("light_hue")) {
+					await device.setCapabilityValue("light_hue", color);
+					await device.setCapabilityValue("light_saturation", saturation);
 				}
 				if (brightness !== 0) {
-					device.setCapabilityValue('dim', brightness);
+					device.setCapabilityValue("dim", brightness);
 				} else {
-					await device.setCapabilityValue('onoff', false);
+					await device.setCapabilityValue("onoff", false);
 				}
 			}
 		});
 	}
 
-	async setRoomLightsColors(room: string, brightness: number, color: string) {
+	async setRoomLightsColors(room, brightness, color) {
 		let [h, s, l] = await this.parseHexToHSL(color);
 		this.setLightsColors(room, brightness, h, s);
 	}
 }
 
-module.exports = RoomLights;
+module.exports = MyApp;
