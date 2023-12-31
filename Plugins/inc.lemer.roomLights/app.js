@@ -3,10 +3,10 @@
 const Homey = require("homey");
 const { HomeyAPI } = require("homey-api");
 
-class MyApp extends Homey.App {
+class RoomLights extends Homey.App {
 	devices = [];
 	zones = [];
-	zonesNames = [];
+	filterZone = [];
 	/**
 	 * onInit is called when the app is initialized.
 	 */
@@ -19,45 +19,41 @@ class MyApp extends Homey.App {
 		this.zones = Object.values(await this.homeyApi.zones.getZones());
 
 		for (const zone of this.zones.values()) {
-			console.log(zone);
-
-			this.zonesNames.push(zone.name);
+			let filterZone = {};
+			filterZone.id = zone.id;
+			filterZone.name = zone.name;
+			filterZone.desciption = zone.name;
+			this.filterZone.push(filterZone);
 		}
 
-		const setRoomLights = this.homey.flow.getActionCard("setroomlights");
-		setRoomLights.registerRunListener(async (args) => {
-			const { room, brightness, temperature } = args;
-			await this.setLightsBrightness(room, brightness, temperature);
-		});
+		this.homey.flow
+			.getActionCard("setroomlights")
+			.registerRunListener(async (args) => {
+				const { room, brightness, temperature } = args;
+				await this.setLightsBrightness(room, brightness, temperature);
+			})
+			.registerArgumentAutocompleteListener("room", async (query, args) => {
+				return this.filterZone.filter((zone) => {
+					return zone.name.toLowerCase().includes(query.toLowerCase()) || zone.name.toLowerCase() == query.toLowerCase();
+				});
+			});
 
-		const setRoomLightsColors = this.homey.flow.getActionCard("setroomlightscolors");
-		setRoomLightsColors.registerRunListener(async (args) => {
-			const { room, brightness, color } = args;
-			await this.setRoomLightsColors(room, brightness, color);
-		});
+		this.homey.flow
+			.getActionCard("setroomlightscolors")
+			.registerRunListener(async (args) => {
+				const { room, brightness, color } = args;
+				await this.setRoomLightsColors(room, brightness, color);
+			})
+			.registerArgumentAutocompleteListener("room", async (query, args) => {
+				return this.filterZone.filter((zone) => {
+					return zone.name.toLowerCase().includes(query.toLowerCase()) || zone.name.toLowerCase() == query.toLowerCase();
+				});
+			});
 
 		this.log("MyApp has been initialized");
 	}
 
-	async getZoneId(room) {
-		let selectedZoneId = "";
-		const roomNames = [];
-
-		this.zones.forEach((zone) => {
-			if (zone.name === room) {
-				selectedZoneId = zone.id;
-				roomNames.push(zone.name);
-			}
-		});
-
-		if (selectedZoneId === "") {
-			throw new Error(`Please send the name of the room as the first argument : ${roomNames}`);
-		}
-
-		return selectedZoneId;
-	}
-
-	async parseHexToHSL(hex) {
+	parseHexToHSL(hex) {
 		let b = parseInt(hex.substring(5, 7), 16) / 255;
 		let g = parseInt(hex.substring(3, 5), 16) / 255;
 		let r = parseInt(hex.substring(1, 3), 16) / 255;
@@ -91,14 +87,13 @@ class MyApp extends Homey.App {
 		return [+h.toFixed(3), +s.toFixed(3), +l.toFixed(3)];
 	}
 
-	async isLight(device) {
+	isLight(device) {
 		return device.class === "light" && device.capabilities.includes("dim");
 	}
 
 	async setLightsBrightness(zone, brightness, temperature) {
-		const zoneId = await this.getZoneId(zone);
 		this.devices.forEach(async (device) => {
-			if ((await this.isLight(device)) && device.zone === zoneId) {
+			if (this.isLight(device) && device.zone === zone.id) {
 				if (brightness !== 0) {
 					device.setCapabilityValue("dim", brightness);
 					await device.setCapabilityValue("light_temperature", temperature);
@@ -110,9 +105,8 @@ class MyApp extends Homey.App {
 	}
 
 	async setLightsColors(zone, brightness, color, saturation) {
-		const zoneId = await this.getZoneId(zone);
 		this.devices.forEach(async (device) => {
-			if ((await this.isLight(device)) && device.zone === zoneId) {
+			if (this.isLight(device) && device.zone === zone.id) {
 				if (device.capabilities.includes("light_hue")) {
 					await device.setCapabilityValue("light_hue", color);
 					await device.setCapabilityValue("light_saturation", saturation);
@@ -127,9 +121,9 @@ class MyApp extends Homey.App {
 	}
 
 	async setRoomLightsColors(room, brightness, color) {
-		let [h, s, l] = await this.parseHexToHSL(color);
+		let [h, s, l] = this.parseHexToHSL(color);
 		this.setLightsColors(room, brightness, h, s);
 	}
 }
 
-module.exports = MyApp;
+module.exports = RoomLights;

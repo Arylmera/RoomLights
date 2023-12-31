@@ -10,10 +10,13 @@
 	},
 	"args": [
 		{
-			"type": "text",
+			"type": "autocomplete",
 			"name": "room",
+			"title": {
+				"en": "Room"
+			},
 			"placeholder": {
-				"en": "Bureau"
+				"en": "Bedroom"
 			}
 		},
 		{
