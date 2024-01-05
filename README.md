@@ -1,3 +1,3 @@
-# Homey Box
+# RoomLights
 
-This repository is currently used as a development place, and a backup of scripts to be used with Homey Pro
+Let you control all the lights in a defined Homey zone at once
