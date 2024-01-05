@@ -4,9 +4,9 @@ const Homey = require("homey");
 const { HomeyAPI } = require("homey-api");
 
 class RoomLights extends Homey.App {
-  devices = [];
-  zones = [];
-  filterZone = [];
+  zoneFilter = [];
+  myHome = {};
+
   /**
    * onInit is called when the app is initialized.
    */
@@ -15,22 +15,10 @@ class RoomLights extends Homey.App {
       homey: this.homey,
     });
 
-    this.devices = Object.values(await this.homeyApi.devices.getDevices());
-    this.zones = Object.values(await this.homeyApi.zones.getZones());
+    // Setup RoomLights variables
+    await this.buildRoomLightsZones();
 
-    console.log(this.devices);
-    console.log(this.zones);
-
-    for (const zone of this.zones.values()) {
-      if (!zone.name.startsWith("_")) {
-        let filterZone = {};
-        filterZone.id = zone.id;
-        filterZone.name = zone.name;
-        filterZone.desciption = zone.name;
-        this.filterZone.push(filterZone);
-      }
-    }
-
+    // Refegister cards
     this.homey.flow
       .getActionCard("setroomlights")
       .registerRunListener(async (args) => {
@@ -38,7 +26,7 @@ class RoomLights extends Homey.App {
         await this.setLightsBrightness(room, brightness, temperature);
       })
       .registerArgumentAutocompleteListener("room", async (query, args) => {
-        return this.filterZone.filter((zone) => {
+        return this.zoneFilter.filter((zone) => {
           return zone.name.toLowerCase().includes(query.toLowerCase()) || zone.name.toLowerCase() == query.toLowerCase();
         });
       });
@@ -50,12 +38,55 @@ class RoomLights extends Homey.App {
         await this.setRoomLightsColors(room, brightness, color);
       })
       .registerArgumentAutocompleteListener("room", async (query, args) => {
-        return this.filterZone.filter((zone) => {
+        return this.zoneFilter.filter((zone) => {
           return zone.name.toLowerCase().includes(query.toLowerCase()) || zone.name.toLowerCase() == query.toLowerCase();
         });
       });
 
     this.log("Room lights has been initialized");
+  }
+
+  async buildRoomLightsZones() {
+    const homeyZones = Object.values(await this.homeyApi.zones.getZones());
+    const devices = Object.values(await this.homeyApi.devices.getDevices());
+
+    for (const zone of homeyZones.values()) {
+      if (!zone.name.startsWith("_")) {
+        let zoneFilter = {};
+        zoneFilter.id = zone.id;
+        zoneFilter.name = zone.name;
+        this.zoneFilter.push(zoneFilter);
+      }
+    }
+
+    // Build by home
+    for (const zone of homeyZones) {
+      const room = {
+        id: zone.id,
+        name: zone.name,
+        parentId: zone.parent,
+        devices: {},
+      };
+      this.myHome[zone.id] = room;
+    }
+    for (const device of devices) {
+      if (this.myHome[device.zone].devices[device.class] == null) {
+        this.myHome[device.zone].devices[device.class] = [];
+      }
+      this.myHome[device.zone].devices[device.class].push(device);
+    }
+    // add all childs devices to parent
+    for (const room of Object.keys(this.myHome)) {
+      if (this.myHome[room].parentId != null) {
+        for (const type in this.myHome[room].devices) {
+          if (this.myHome[this.myHome[room].parentId].devices[type]) {
+            this.myHome[this.myHome[room].parentId].devices[type].concat(this.myHome[room].devices[type]);
+          } else {
+            this.myHome[this.myHome[room].parentId].devices[type] = this.myHome[room].devices[type];
+          }
+        }
+      }
+    }
   }
 
   parseHexToHSL(hex) {
@@ -92,35 +123,31 @@ class RoomLights extends Homey.App {
     return [+h.toFixed(3), +s.toFixed(3), +l.toFixed(3)];
   }
 
-  isLight(device) {
-    return device.class === "light" && device.capabilities.includes("dim");
-  }
-
-  async setLightsBrightness(zone, brightness, temperature) {
-    this.devices.forEach(async (device) => {
-      if (this.isLight(device) && device.zone === zone.id) {
-        if (brightness !== 0) {
-          device.setCapabilityValue("dim", brightness);
+  async setLightsBrightness(room, brightness, temperature) {
+    this.myHome[room.id].devices["light"].forEach(async (device) => {
+      if (brightness !== 0) {
+        device.setCapabilityValue("dim", brightness);
+        if (device.capabilities.includes("light_temperature")) {
           await device.setCapabilityValue("light_temperature", temperature);
-        } else {
-          await device.setCapabilityValue("onoff", false);
         }
+      } else {
+        await device.setCapabilityValue("onoff", false);
       }
     });
   }
 
-  async setLightsColors(zone, brightness, color, saturation) {
-    this.devices.forEach(async (device) => {
-      if (this.isLight(device) && device.zone === zone.id) {
-        if (device.capabilities.includes("light_hue")) {
-          await device.setCapabilityValue("light_hue", color);
-          await device.setCapabilityValue("light_saturation", saturation);
-        }
-        if (brightness !== 0) {
-          device.setCapabilityValue("dim", brightness);
-        } else {
-          await device.setCapabilityValue("onoff", false);
-        }
+  async setLightsColors(room, brightness, color, saturation) {
+    this.myHome[room.id].devices["light"].forEach(async (device) => {
+      if (device.capabilities.includes("light_hue")) {
+        await device.setCapabilityValue("light_hue", color);
+        await device.setCapabilityValue("light_saturation", saturation);
+      } else {
+        await device.setCapabilityValue("onoff", false);
+      }
+      if (brightness !== 0) {
+        device.setCapabilityValue("dim", brightness);
+      } else {
+        await device.setCapabilityValue("onoff", false);
       }
     });
   }
