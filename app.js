@@ -20,7 +20,7 @@ class RoomLights extends Homey.App {
 
     // Refegister cards
     this.homey.flow
-      .getActionCard("setroomlights")
+      .getActionCard("setRoomlights")
       .registerRunListener(async (args) => {
         const { room, brightness, temperature } = args;
         await this.setLightsBrightness(room, brightness, temperature);
@@ -32,7 +32,19 @@ class RoomLights extends Homey.App {
       });
 
     this.homey.flow
-      .getActionCard("setroomlightscolors")
+      .getActionCard("setRoomAmbiance")
+      .registerRunListener(async (args) => {
+        const { room, brightness, temperature } = args;
+        await this.setLightsAmbianceBrightness(room, brightness, temperature);
+      })
+      .registerArgumentAutocompleteListener("room", async (query, args) => {
+        return this.zoneFilter.filter((zone) => {
+          return zone.name.toLowerCase().includes(query.toLowerCase()) || zone.name.toLowerCase() == query.toLowerCase();
+        });
+      });
+
+    this.homey.flow
+      .getActionCard("setRoomlightscolors")
       .registerRunListener(async (args) => {
         const { room, brightness, color } = args;
         await this.setRoomLightsColors(room, brightness, color);
@@ -124,8 +136,24 @@ class RoomLights extends Homey.App {
   }
 
   async setLightsBrightness(room, brightness, temperature) {
-    this.myHome[room.id].devices["light"].forEach(async (device) => {
+    let impactedDevices = this.myHome[room.id].devices["light"];
+    impactedDevices.forEach(async (device) => {
       if (brightness !== 0) {
+        device.setCapabilityValue("dim", brightness);
+        if (device.capabilities.includes("light_temperature")) {
+          await device.setCapabilityValue("light_temperature", temperature);
+        }
+      } else {
+        await device.setCapabilityValue("onoff", false);
+      }
+    });
+  }
+
+  async setLightsAmbianceBrightness(room, brightness, temperature) {
+    let impactedDevices = this.myHome[room.id].devices["light"];
+    impactedDevices.forEach(async (device) => {
+      const ambianceLight = device.name.includes("-A");
+      if (ambianceLight && brightness !== 0) {
         device.setCapabilityValue("dim", brightness);
         if (device.capabilities.includes("light_temperature")) {
           await device.setCapabilityValue("light_temperature", temperature);
