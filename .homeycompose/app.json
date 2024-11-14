@@ -13,9 +13,8 @@
 	"category": ["lights"],
 	"permissions": ["homey:manager:api"],
 	"images": {
-		"small": "/assets/images/roomLights.png",
-		"large": "/assets/images/roomLights.png",
-		"xlarge": "/assets/images/roomLights.png"
+		"small": "/assets/images/roomLights-small.png",
+		"large": "/assets/images/roomLights-large.png"
 	},
 	"brandColor": "#308511",
 	"author": {
