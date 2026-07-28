@@ -39,7 +39,7 @@ Sets the `dim` capability on every light in the zone, and `light_temperature` on
 | `brightness` | range | 0 – 1, step 0.01 (shown as 0–100 %) | `0` turns the lights **off** |
 | `color` | color | `#RRGGBB` | Converted to hue/saturation before being applied |
 
-The picked hex colour is converted to HSL; hue and saturation are written to `light_hue` and `light_saturation`. Lights without `light_hue` (e.g. plain white bulbs) are switched **off** by this card.
+The picked hex colour is converted to HSL; hue and saturation are written to `light_hue` and `light_saturation`. Lights without `light_hue` (e.g. plain white bulbs) simply take the brightness and ignore the colour.
 
 ## Example
 
@@ -55,25 +55,28 @@ Everything lives in a single [`app.js`](app.js) exporting one `Homey.App` subcla
 onInit()
  ├─ HomeyAPI.createAppAPI()          → authenticated Homey Web API client
  ├─ buildRoomLightsZones()           → fills this.zoneFilter and this.myHome
+ ├─ watchForChanges()                → rebuilds the map when zones/devices change
  └─ registers the two action cards   → run listener + room autocomplete listener
 ```
 
 State held on the app instance:
 
 - **`zoneFilter`** — `[{ id, name }]`, the list backing the room autocomplete. Excludes `_`-prefixed zones.
-- **`myHome`** — `{ [zoneId]: { id, name, parentId, devices: { [deviceClass]: Device[] } } }`, every zone with its devices bucketed by class. Child-zone devices are rolled up into the parent zone.
+- **`myHome`** — `{ [zoneId]: { id, name, parentId, devices: { [deviceClass]: Device[] } } }`, every zone with its devices bucketed by class. A device is added to its own zone **and to every ancestor zone**, so targeting `Ground floor` also reaches the lights in the rooms below it.
 
 Key methods:
 
 | Method | Purpose |
 |---|---|
-| `buildRoomLightsZones()` | Fetches zones + devices once at start-up and builds the two structures above |
+| `buildRoomLightsZones()` | Fetches zones + devices and rebuilds the two structures above from scratch |
+| `watchForChanges()` | Subscribes to `device.*` / `zone.*` events and schedules a debounced rebuild |
+| `roomLights(room)` | The lights of a zone, or an empty array if the zone has none |
 | `parseHexToHSL(hex)` | `#RRGGBB` → `[h, s, l]`, each normalised to 0–1 and rounded to 3 decimals |
 | `setLightsBrightness(room, brightness, temperature)` | Backs the `setroomlights` card |
 | `setRoomLightsColors(room, brightness, color)` | Backs the `setroomlightscolors` card; converts the hex then delegates to `setLightsColors` |
-| `setLightsColors(room, brightness, hue, saturation)` | Writes `light_hue` / `light_saturation` / `dim` per device |
+| `setLightsColors(room, brightness, hue, saturation)` | Writes `dim` / `light_hue` / `light_saturation` per device |
 
-> **Note:** the zone/device map is built **once, at app start**. Devices or zones added afterwards only appear after the app is restarted.
+The map is a snapshot, so the app subscribes to Homey's realtime `device.create` / `device.delete` / `device.update` and `zone.create` / `zone.delete` / `zone.update` events and rebuilds when any of them fire. Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events — pairing several devices, or a dimming light emitting `device.update` — collapses into one rebuild.
 
 ## Repository layout
 
@@ -83,7 +86,8 @@ app.json                    GENERATED — do not edit by hand
 .homeycompose/
   app.json                  app manifest source
   flow/actions/*.json       one file per Flow card
-locales/en.json             translation strings (currently empty)
+test/app.test.js            node --test suite for the pure logic
+locales/en.json             translation strings (empty — all copy is inline in .homeycompose)
 assets/
   icon.svg                  app icon
   images/                   store images + Makefile that generates them
@@ -104,6 +108,14 @@ Requires Node.js and the [Homey CLI](https://apps.developer.homey.app/the-basics
 ```bash
 npm install
 ```
+
+Run the tests — they stub the `homey` runtime, so no Homey is needed:
+
+```bash
+npm test
+```
+
+Install the CLI to run the app on real hardware:
 
 ```bash
 npm install -g homey
