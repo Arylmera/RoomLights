@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
+    <style>
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        margin: 0;
+        padding: 16px;
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.intro {
+        color: #666;
+        margin: 0 0 20px;
+        line-height: 1.4;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 20px 0 4px;
+      }
+      .zone {
+        border-top: 1px solid #ddd;
+        padding-top: 4px;
+      }
+      .role {
+        margin: 0 0 14px 0;
+      }
+      .role h3 {
+        font-size: 11px;
+        color: #888;
+        margin: 10px 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 6px;
+      }
+      td {
+        padding: 6px 0;
+        border-bottom: 1px solid #f0f0f0;
+      }
+      td.trash {
+        width: 32px;
+        text-align: right;
+      }
+      button.trash {
+        border: 0;
+        background: none;
+        cursor: pointer;
+        font-size: 15px;
+        padding: 0;
+      }
+      select {
+        width: 100%;
+        padding: 6px;
+      }
+      .empty {
+        color: #aaa;
+        font-style: italic;
+        padding: 4px 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Light roles</h1>
+    <p class="intro">
+      Every light is <strong>main</strong> unless you say otherwise. Flow cards can target main or
+      ambient lights separately. <strong>Excluded</strong> lights are never touched by any card,
+      whatever it targets.
+    </p>
+    <div id="zones"></div>
+
+    <script type="text/javascript">
+      var ROLES = [
+        { id: "ambient", label: "Ambient" },
+        { id: "excluded", label: "Excluded — never touched" },
+      ];
+      var zones = [];
+      var roles = {};
+
+      function onHomeyReady(Homey) {
+        Homey.api("GET", "/lights", null, function (err, result) {
+          if (err) return Homey.alert(err);
+          zones = result || [];
+          roles = {};
+          zones.forEach(function (zone) {
+            zone.lights.forEach(function (light) {
+              if (light.role !== "main") {
+                roles[light.id] = light.role;
+              }
+            });
+          });
+          render(Homey);
+          Homey.ready();
+        });
+      }
+
+      function save(Homey) {
+        Homey.api("PUT", "/roles", roles, function (err) {
+          if (err) return Homey.alert(err);
+        });
+      }
+
+      function render(Homey) {
+        var container = document.getElementById("zones");
+        container.innerHTML = "";
+
+        zones.forEach(function (zone) {
+          var section = document.createElement("div");
+          section.className = "zone";
+
+          var heading = document.createElement("h2");
+          heading.textContent = zone.name;
+          section.appendChild(heading);
+
+          ROLES.forEach(function (role) {
+            section.appendChild(renderRole(Homey, zone, role));
+          });
+
+          container.appendChild(section);
+        });
+      }
+
+      function renderRole(Homey, zone, role) {
+        var block = document.createElement("div");
+        block.className = "role";
+
+        var heading = document.createElement("h3");
+        heading.textContent = role.label;
+        block.appendChild(heading);
+
+        var assigned = zone.lights.filter(function (light) {
+          return roles[light.id] === role.id;
+        });
+
+        if (assigned.length === 0) {
+          var empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "None";
+          block.appendChild(empty);
+        } else {
+          var table = document.createElement("table");
+          assigned.forEach(function (light) {
+            var row = table.insertRow();
+            row.insertCell().textContent = light.name;
+            var cell = row.insertCell();
+            cell.className = "trash";
+            var button = document.createElement("button");
+            button.className = "trash";
+            button.title = "Back to main";
+            button.textContent = "🗑";
+            button.onclick = function () {
+              delete roles[light.id];
+              save(Homey);
+              render(Homey);
+            };
+            cell.appendChild(button);
+          });
+          block.appendChild(table);
+        }
+
+        var available = zone.lights.filter(function (light) {
+          return roles[light.id] == null;
+        });
+
+        var select = document.createElement("select");
+        var placeholder = document.createElement("option");
+        placeholder.textContent = available.length === 0 ? "No main lights left" : "Add a light…";
+        placeholder.value = "";
+        select.appendChild(placeholder);
+        available.forEach(function (light) {
+          var option = document.createElement("option");
+          option.value = light.id;
+          option.textContent = light.name;
+          select.appendChild(option);
+        });
+        select.disabled = available.length === 0;
+        select.onchange = function () {
+          if (!select.value) return;
+          roles[select.value] = role.id;
+          save(Homey);
+          render(Homey);
+        };
+        block.appendChild(select);
+
+        return block;
+      }
+    </script>
+  </body>
+</html>
