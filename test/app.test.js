@@ -3,8 +3,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const Module = require("node:module");
-const fs = require("node:fs");
-const path = require("node:path");
 
 // app.js requires "homey", which only exists inside Homey itself. Stub it (and
 // homey-api) so the pure logic can be tested with plain node --test.
@@ -39,15 +37,6 @@ function fakeApp({ zones, devices, roles }) {
 }
 
 const light = (id, zone) => ({ id, zone, class: "light", capabilities: ["onoff", "dim"] });
-
-test("app.js stays parseable on Node 12", () => {
-  // app.json declares compatibility >=5.0.0, and Homey Pro (2016-2019) below
-  // firmware v7.4.0 runs Node 12. These are Node 14+/15+ syntax, so they are a
-  // load-time SyntaxError there — the app would not start at all.
-  const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
-  assert.ok(!/\?\./.test(source), "optional chaining (?.) needs Node 14");
-  assert.ok(!/\?\?/.test(source), "nullish coalescing (?? / ??=) needs Node 14+");
-});
 
 test("parseHexToHSL converts the corners of the colour space", () => {
   const app = new RoomLights();

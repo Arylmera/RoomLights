@@ -198,15 +198,20 @@ Extending the existing `node --test` suite (`npm test`), which stubs the `homey`
 `api.js` route handlers are testable the same way. `settings/index.html` is not unit-tested —
 verify it by hand with `homey app run`.
 
-## Constraints carried from the existing code
+## Resolved: the Node version floor
 
-`app.js` and `api.js` must stay parseable on **Node 12**: the manifest declares
-`compatibility: ">=5.0.0"`, and Homey Pro (2016-2019) below firmware v7.4.0 runs Node 12, where
-`?.`, `??` and `??=` are a load-time `SyntaxError`. A test enforces this. `settings/index.html` runs
-in a browser and is not subject to it.
+The manifest originally declared `compatibility: ">=5.0.0"`, the SDK v3 default, which claims support
+for Homey Pro (2016-2019) below firmware v7.4.0 — where apps run **Node 12** and `?.`, `??` and `??=`
+are a load-time `SyntaxError`. That was enforced by a test.
 
-Both of this account's Homeys run software 13.4.0 (Node 22), so this constraint exists only to keep
-the declared compatibility range honest. Raising `compatibility` to `>=12.9.0` would lift it.
+Raised to `">=12.9.0"` on 2026-07-28 at the author's request. Both of this account's Homeys run
+software 13.4.0, the app has never been published, and the old range was advertising support for
+hardware nobody tests on. Homey v12.9.0 is where apps moved to Node 22, so modern syntax is now free
+to use and the guard test is gone.
+
+`>=7.4.0` (Node 16) would also have permitted that syntax while covering more devices. It was not
+chosen: nothing here is tested below 13.4.0, and a compatibility claim should describe what is
+actually known to work.
 
 ## Resolved: reading `onoff` reflects live state
 

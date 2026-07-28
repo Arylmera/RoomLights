@@ -62,10 +62,10 @@ See the [README](README.md#development) for the rest of the development workflow
 
 ## Things worth knowing
 
-* **Keep [`app.js`](app.js) parseable on Node 12.** The manifest declares `compatibility: ">=5.0.0"`,
-  and Homey Pro (2016-2019) below firmware v7.4.0 runs Node 12. Optional chaining (`?.`) and nullish
-  coalescing (`??`, `??=`) are a load-time `SyntaxError` there, so the app would not start at all.
-  A test guards this. If you would rather use modern syntax, raise `compatibility` to `>=7.4.0` first.
+* **Modern JavaScript is fine.** The manifest declares `compatibility: ">=12.9.0"`, which is the
+  Homey version that moved apps to Node 22, so optional chaining, nullish coalescing and logical
+  assignment all work. If you ever lower `compatibility`, check the Node version that range implies
+  before using newer syntax — below Homey v7.4.0 apps run on Node 12.
 * **Never edit [`app.json`](app.json).** It is generated from [`.homeycompose/`](.homeycompose) by the
   Homey CLI and your changes will be overwritten. Edit `.homeycompose/app.json` or the per-card files
   under `.homeycompose/flow/actions/` instead.
