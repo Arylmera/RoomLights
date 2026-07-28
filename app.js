@@ -7,6 +7,11 @@ const { HomeyAPI } = require("homey-api");
 // dimming light emitting device.update) collapses into a single rebuild.
 const REBUILD_DEBOUNCE_MS = 5000;
 
+// A light's role is stored only when it is not the default, so an unconfigured
+// app behaves exactly as it did before roles existed.
+const DEFAULT_ROLE = "main";
+const ROLE_EXCLUDED = "excluded";
+
 class RoomLights extends Homey.App {
   zoneFilter = [];
   myHome = {};
@@ -116,12 +121,45 @@ class RoomLights extends Homey.App {
     this.myHome = myHome;
   }
 
-  roomLights(room) {
+  lightRoles() {
+    return this.homey.settings.get("lightRoles") || {};
+  }
+
+  isOn(device) {
+    const capabilities = device.capabilitiesObj;
+    if (capabilities == null || capabilities.onoff == null) {
+      // Unknown state: treat as on, so a light is never skipped silently.
+      return true;
+    }
+    return capabilities.onoff.value === true;
+  }
+
+  roomLights(room, role, state) {
     const zone = this.myHome[room.id];
     if (zone == null || zone.devices["light"] == null) {
       return [];
     }
-    return zone.devices["light"];
+
+    const roles = this.lightRoles();
+    const wantedRole = role == null ? "all" : role;
+    const onlyOn = state === "on";
+    const lights = [];
+
+    for (const device of zone.devices["light"]) {
+      const deviceRole = roles[device.id] || DEFAULT_ROLE;
+      if (deviceRole === ROLE_EXCLUDED) {
+        continue;
+      }
+      if (wantedRole !== "all" && deviceRole !== wantedRole) {
+        continue;
+      }
+      if (onlyOn && !this.isOn(device)) {
+        continue;
+      }
+      lights.push(device);
+    }
+
+    return lights;
   }
 
   parseHexToHSL(hex) {

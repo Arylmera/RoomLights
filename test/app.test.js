@@ -18,8 +18,19 @@ Module._load = (request, ...rest) => {
 const RoomLights = require("../app.js");
 Module._load = load;
 
-function fakeApp({ zones, devices }) {
+function fakeApp({ zones, devices, roles }) {
   const app = new RoomLights();
+  const stored = { lightRoles: roles || {} };
+  app.homey = {
+    settings: {
+      get: (key) => stored[key],
+      set: (key, value) => {
+        stored[key] = value;
+      },
+    },
+    setTimeout: () => {},
+    clearTimeout: () => {},
+  };
   app.homeyApi = {
     zones: { getZones: async () => zones },
     devices: { getDevices: async () => devices },
@@ -167,4 +178,61 @@ test("a colour bulb gets hue and saturation", async () => {
 
   await app.setRoomLightsColors({ id: "a" }, 0.6, "#00ff00");
   assert.deepStrictEqual(calls, [["dim", 0.6], ["light_hue", 0.333], ["light_saturation", 1]]);
+});
+
+const roleZones = { a: { id: "a", name: "Salon", parent: null } };
+
+// A factory, not a shared constant: tests mutate capabilitiesObj, and shared
+// device objects would leak that mutation into every later test.
+const roleDevices = () => ({
+  1: { id: 1, zone: "a", class: "light", name: "spot", capabilities: ["onoff", "dim"] },
+  2: { id: 2, zone: "a", class: "light", name: "strip", capabilities: ["onoff", "dim"] },
+  3: { id: 3, zone: "a", class: "light", name: "circadian", capabilities: ["onoff", "dim"] },
+});
+const roleMap = { 2: "ambient", 3: "excluded" };
+
+async function roleApp() {
+  const app = fakeApp({ zones: roleZones, devices: roleDevices(), roles: roleMap });
+  await app.buildRoomLightsZones();
+  return app;
+}
+
+const idsOf = (lights) => lights.map((d) => d.id).sort();
+
+test("role all returns every light except excluded ones", async () => {
+  const app = await roleApp();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "all")), [1, 2]);
+});
+
+test("excluded is dropped even with no role argument at all", async () => {
+  const app = await roleApp();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" })), [1, 2]);
+});
+
+test("role main returns only lights with no stored role", async () => {
+  const app = await roleApp();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "main", "all")), [1]);
+});
+
+test("role ambient returns only ambient lights", async () => {
+  const app = await roleApp();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "ambient", "all")), [2]);
+});
+
+test("state on skips lights whose onoff is false", async () => {
+  const app = await roleApp();
+  app.myHome["a"].devices["light"][0].capabilitiesObj = { onoff: { value: false } };
+  app.myHome["a"].devices["light"][1].capabilitiesObj = { onoff: { value: true } };
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "on")), [2]);
+});
+
+test("a light with unknown onoff state is treated as on", async () => {
+  const app = await roleApp();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "on")), [1, 2]);
+});
+
+test("a stale device id in lightRoles is ignored", async () => {
+  const app = fakeApp({ zones: roleZones, devices: roleDevices(), roles: { 999: "excluded" } });
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "all")), [1, 2, 3]);
 });
