@@ -73,6 +73,17 @@ They share two behaviour fixes with the new cards: they skip `excluded` lights, 
 
 Migrate a Flow by replacing the card with its `…role` equivalent set to `All` / `All lights`, which now behaves identically.
 
+## Driving main and ambient differently
+
+There is no single card that sets main lights *and* ambient lights to different values — deliberately. Use two cards side by side in an Advanced Flow:
+
+> *Set `Main only` lights of `Salon` (`All lights`) to brightness `40 %` and temperature `20 %`*
+> *Turn off `Ambient only` lights of `Salon`*
+
+They run independently, so the spots come up warm and dim while the TV strip goes dark. The same shape covers the reverse (ambient on, main off) and any other split.
+
+A card argument was considered for this and rejected: an "other lights" dropdown could only ever turn the other group *off*, and a card with two full argument groups would show seven-plus controls that Homey cannot conditionally hide. Two cards stay readable and can express anything.
+
 ## Example
 
 > **When** the motion sensor detects movement

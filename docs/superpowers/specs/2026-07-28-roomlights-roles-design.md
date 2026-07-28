@@ -247,3 +247,14 @@ Both that and `homey api flow get-flows --json` must show zero references to `se
 Named light groups per room, per-Flow one-off exclusions, circadian/time-of-day automation, and
 lux-sensor-driven brightness. Roles cover the stated need; each of these can be added later without
 reworking this design.
+
+### Decided 2026-07-28: one card driving main and ambient differently
+
+Asked for, and deliberately **not** built. Four options were weighed: an "other lights" dropdown
+(`Leave alone` / `Turn off`), two full argument groups on one card, named room scenes in settings,
+and simply placing two cards side by side in an Advanced Flow.
+
+The author chose two cards. It requires no code, expresses cases the single-card options cannot —
+main at 40 % *and* ambient at 15 %, which the dropdown could never do — and avoids a card carrying
+seven-plus controls that Homey has no way to hide conditionally. Named scenes remain the option
+worth revisiting if several distinct looks per room are ever wanted; a card argument is not.
