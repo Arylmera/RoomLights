@@ -197,13 +197,22 @@ in a browser and is not subject to it.
 Both of this account's Homeys run software 13.4.0 (Node 22), so this constraint exists only to keep
 the declared compatibility range honest. Raising `compatibility` to `>=12.9.0` would lift it.
 
-## To verify during implementation
+## Resolved: reading `onoff` reflects live state
 
-**Reading `onoff` must reflect live state.** The `state` filter depends on the current value of
-`onoff` from the `homey-api` device objects held in `myHome`. The app connects to the devices
-manager, so values should be live — but a stale value would make the filter silently wrong, which is
-the worst kind of bug. Confirm against the real Homey before relying on it; if values prove stale,
-read the capability explicitly at execution time instead.
+**Verified 2026-07-28, and the design changed as a result.** Against the real Homey,
+`capabilitiesObj.onoff.value` is populated for all 38 lights (2 on, 35 off, none unknown) with
+distinct per-device `lastUpdated` timestamps — so the value is live *in the API*.
+
+That was not enough. The app holds long-lived cached device objects in `myHome`, whereas each CLI
+call re-fetches. `homey-api` documents `makeCapabilityInstance()` as the mechanism for realtime
+capability updates, which implies the cached `capabilitiesObj` on a device object is **not**
+guaranteed to be written back. Relying on it would have made the filter silently wrong — the exact
+failure this section existed to prevent.
+
+`roomLights()` is therefore `async` and calls `lightStates()`, which re-reads devices from the API,
+but **only** when a card actually asks for `state: Only lights already on`. Cards using
+`state: All lights` cost nothing extra. A regression test drives the stale case directly: the cached
+object reports on, the API reports off, and the filter must follow the API.
 
 ## Later: removing the deprecated cards
 

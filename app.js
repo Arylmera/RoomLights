@@ -167,7 +167,21 @@ class RoomLights extends Homey.App {
     return capabilities.onoff.value === true;
   }
 
-  roomLights(room, role, state) {
+  // The device objects in myHome are a snapshot. homey-api does not promise to
+  // write realtime capability changes back into them — that is what
+  // makeCapabilityInstance() exists for — so a cached onoff would silently make
+  // the "only lights already on" filter wrong. Re-read the devices when, and
+  // only when, a card actually asks to filter on current state.
+  async lightStates() {
+    const devices = Object.values(await this.homeyApi.devices.getDevices());
+    const states = {};
+    for (const device of devices) {
+      states[device.id] = this.isOn(device);
+    }
+    return states;
+  }
+
+  async roomLights(room, role, state) {
     const zone = this.myHome[room.id];
     if (zone == null || zone.devices["light"] == null) {
       return [];
@@ -176,6 +190,7 @@ class RoomLights extends Homey.App {
     const roles = this.lightRoles();
     const wantedRole = role == null ? "all" : role;
     const onlyOn = state === "on";
+    const states = onlyOn ? await this.lightStates() : null;
     const lights = [];
 
     for (const device of zone.devices["light"]) {
@@ -186,7 +201,7 @@ class RoomLights extends Homey.App {
       if (wantedRole !== "all" && deviceRole !== wantedRole) {
         continue;
       }
-      if (onlyOn && !this.isOn(device)) {
+      if (onlyOn && states[device.id] !== true) {
         continue;
       }
       lights.push(device);
@@ -287,7 +302,7 @@ class RoomLights extends Homey.App {
   async setLightsBrightness(room, brightness, temperature, options) {
     const opts = options || {};
     await Promise.all(
-      this.roomLights(room, opts.role, opts.state).map(async (device) => {
+      (await this.roomLights(room, opts.role, opts.state)).map(async (device) => {
         if (brightness === 0) {
           await device.setCapabilityValue("onoff", false);
           return;
@@ -306,7 +321,7 @@ class RoomLights extends Homey.App {
   async setLightsColors(room, brightness, color, saturation, options) {
     const opts = options || {};
     await Promise.all(
-      this.roomLights(room, opts.role, opts.state).map(async (device) => {
+      (await this.roomLights(room, opts.role, opts.state)).map(async (device) => {
         if (brightness === 0) {
           await device.setCapabilityValue("onoff", false);
           return;
@@ -331,7 +346,7 @@ class RoomLights extends Homey.App {
 
   async turnOffRoomLights(room, role) {
     await Promise.all(
-      this.roomLights(room, role).map((device) => {
+      (await this.roomLights(room, role)).map((device) => {
         return device.setCapabilityValue("onoff", false);
       })
     );

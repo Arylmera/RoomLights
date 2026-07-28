@@ -82,10 +82,10 @@ test("a parent zone reaches the lights of its whole subtree", async () => {
   });
   await app.buildRoomLightsZones();
 
-  const ids = (zoneId) => app.roomLights({ id: zoneId }).map((d) => d.id).sort();
-  assert.deepStrictEqual(ids("house"), [1, 2, 3], "grandchild lights must roll up to the top zone");
-  assert.deepStrictEqual(ids("floor"), [2, 3]);
-  assert.deepStrictEqual(ids("room"), [3]);
+  const ids = async (zoneId) => (await app.roomLights({ id: zoneId })).map((d) => d.id).sort();
+  assert.deepStrictEqual(await ids("house"), [1, 2, 3], "grandchild lights must roll up to the top zone");
+  assert.deepStrictEqual(await ids("floor"), [2, 3]);
+  assert.deepStrictEqual(await ids("room"), [3]);
 });
 
 test("rebuilding does not duplicate zones or devices", async () => {
@@ -96,7 +96,7 @@ test("rebuilding does not duplicate zones or devices", async () => {
   await app.buildRoomLightsZones();
   await app.buildRoomLightsZones();
   assert.strictEqual(app.zoneFilter.length, 1);
-  assert.strictEqual(app.roomLights({ id: "a" }).length, 1);
+  assert.strictEqual((await app.roomLights({ id: "a" })).length, 1);
 });
 
 test("a zone with no lights is a no-op instead of a crash", async () => {
@@ -214,40 +214,40 @@ const idsOf = (lights) => lights.map((d) => d.id).sort();
 
 test("role all returns every light except excluded ones", async () => {
   const app = await roleApp();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "all")), [1, 2]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "all", "all")), [1, 2]);
 });
 
 test("excluded is dropped even with no role argument at all", async () => {
   const app = await roleApp();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" })), [1, 2]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" })), [1, 2]);
 });
 
 test("role main returns only lights with no stored role", async () => {
   const app = await roleApp();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "main", "all")), [1]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "main", "all")), [1]);
 });
 
 test("role ambient returns only ambient lights", async () => {
   const app = await roleApp();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "ambient", "all")), [2]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "ambient", "all")), [2]);
 });
 
 test("state on skips lights whose onoff is false", async () => {
   const app = await roleApp();
   app.myHome["a"].devices["light"][0].capabilitiesObj = { onoff: { value: false } };
   app.myHome["a"].devices["light"][1].capabilitiesObj = { onoff: { value: true } };
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "on")), [2]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "all", "on")), [2]);
 });
 
 test("a light with unknown onoff state is treated as on", async () => {
   const app = await roleApp();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "on")), [1, 2]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "all", "on")), [1, 2]);
 });
 
 test("a stale device id in lightRoles is ignored", async () => {
   const app = fakeApp({ zones: roleZones, devices: roleDevices(), roles: { 999: "excluded" } });
   await app.buildRoomLightsZones();
-  assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "all")), [1, 2, 3]);
+  assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "all", "all")), [1, 2, 3]);
 });
 
 function recordingApp(capabilities, roles) {
@@ -337,4 +337,36 @@ test("setLightRoles drops main because it is the default", async () => {
   const app = fakeApp({ zones: apiZones, devices: apiDevices(), roles: { 1: "ambient" } });
   await app.buildRoomLightsZones();
   assert.deepStrictEqual(app.setLightRoles({ 1: "main" }), {});
+});
+
+test("the state filter reads fresh device state, not the cached snapshot", async () => {
+  const snapshot = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff"],
+    capabilitiesObj: { onoff: { value: true } },
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: snapshot },
+    roles: {},
+  });
+  await app.buildRoomLightsZones();
+
+  // Homey now reports the light as off while the object cached in myHome still
+  // says on — exactly the stale-cache case that would make the filter wrong.
+  app.homeyApi.devices.getDevices = async () => ({
+    1: {
+      id: 1,
+      zone: "a",
+      class: "light",
+      capabilities: ["onoff"],
+      capabilitiesObj: { onoff: { value: false } },
+    },
+  });
+
+  assert.deepStrictEqual(await app.roomLights({ id: "a" }, "all", "on"), []);
+  assert.strictEqual((await app.roomLights({ id: "a" }, "all", "all")).length, 1);
 });
