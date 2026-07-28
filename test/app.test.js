@@ -117,7 +117,7 @@ test("brightness 0 turns lights off, otherwise dim and temperature are applied",
   await app.buildRoomLightsZones();
 
   await app.setLightsBrightness({ id: "a" }, 0.4, 0.7);
-  assert.deepStrictEqual(calls, [["dim", 0.4], ["light_temperature", 0.7]]);
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4], ["light_temperature", 0.7]]);
 
   calls.length = 0;
   await app.setLightsBrightness({ id: "a" }, 0, 0.7);
@@ -134,7 +134,11 @@ test("a white bulb keeps its brightness when a colour is set", async () => {
   await app.buildRoomLightsZones();
 
   await app.setRoomLightsColors({ id: "a" }, 0.6, "#ff0000");
-  assert.deepStrictEqual(calls, [["dim", 0.6]], "must not be switched off just for lacking light_hue");
+  assert.deepStrictEqual(
+    calls,
+    [["onoff", true], ["dim", 0.6]],
+    "must not be switched off just for lacking light_hue"
+  );
 });
 
 test("a failed event subscription still leaves the Flow cards registered", async () => {
@@ -190,7 +194,12 @@ test("a colour bulb gets hue and saturation", async () => {
   await app.buildRoomLightsZones();
 
   await app.setRoomLightsColors({ id: "a" }, 0.6, "#00ff00");
-  assert.deepStrictEqual(calls, [["dim", 0.6], ["light_hue", 0.333], ["light_saturation", 1]]);
+  assert.deepStrictEqual(calls, [
+    ["onoff", true],
+    ["dim", 0.6],
+    ["light_hue", 0.333],
+    ["light_saturation", 1],
+  ]);
 });
 
 const roleZones = { a: { id: "a", name: "Salon", parent: null } };
@@ -268,24 +277,19 @@ function recordingApp(capabilities, roles) {
   return { app, calls, bulb };
 }
 
-test("turnOn writes onoff true before the brightness", async () => {
+test("onoff true is written before the brightness", async () => {
+  // Writing dim alone leaves a light that was off in a device-dependent state:
+  // some bulbs come on, some stay dark. Setting a brightness means "on".
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
-  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, { turnOn: true });
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5);
   assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
-});
-
-test("without turnOn the brightness is written alone", async () => {
-  const { app, calls } = recordingApp(["onoff", "dim"]);
-  await app.buildRoomLightsZones();
-  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, {});
-  assert.deepStrictEqual(calls, [["dim", 0.4]]);
 });
 
 test("brightness 0 turns off and never writes onoff true", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
-  await app.setLightsBrightness({ id: "a" }, 0, 0.5, { turnOn: true });
+  await app.setLightsBrightness({ id: "a" }, 0, 0.5);
   assert.deepStrictEqual(calls, [["onoff", false]]);
 });
 

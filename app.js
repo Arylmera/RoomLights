@@ -28,9 +28,9 @@ class RoomLights extends Homey.App {
     // so let a failure here fail onInit.
     await this.buildRoomLightsZones();
 
-    // Deprecated cards. Their arguments and their dim-without-onoff behaviour
-    // must not change — Advanced Flows depend on them. They only gain the
-    // excluded filter, which is a no-op until a light is marked excluded.
+    // Deprecated cards: kept registered forever because Advanced Flows use
+    // them. Their arguments must not change. They do share the fixed behaviour
+    // of the new cards — the excluded filter, and onoff written before dim.
     this.registerRoomAutocomplete(
       this.homey.flow.getActionCard("setroomlights").registerRunListener(async (args) => {
         await this.setLightsBrightness(args.room, args.brightness, args.temperature);
@@ -48,7 +48,6 @@ class RoomLights extends Homey.App {
         await this.setLightsBrightness(args.room, args.brightness, args.temperature, {
           role: this.argId(args.role),
           state: this.argId(args.state),
-          turnOn: true,
         });
       })
     );
@@ -58,7 +57,6 @@ class RoomLights extends Homey.App {
         await this.setRoomLightsColors(args.room, args.brightness, args.color, {
           role: this.argId(args.role),
           state: this.argId(args.state),
-          turnOn: true,
         });
       })
     );
@@ -311,9 +309,7 @@ class RoomLights extends Homey.App {
           await device.setCapabilityValue("onoff", false);
           return;
         }
-        if (opts.turnOn) {
-          await device.setCapabilityValue("onoff", true);
-        }
+        await device.setCapabilityValue("onoff", true);
         await device.setCapabilityValue("dim", brightness);
         if (device.capabilities.includes("light_temperature")) {
           await device.setCapabilityValue("light_temperature", temperature);
@@ -330,9 +326,7 @@ class RoomLights extends Homey.App {
           await device.setCapabilityValue("onoff", false);
           return;
         }
-        if (opts.turnOn) {
-          await device.setCapabilityValue("onoff", true);
-        }
+        await device.setCapabilityValue("onoff", true);
         await device.setCapabilityValue("dim", brightness);
         // Lights without a hue capability just take the brightness.
         if (device.capabilities.includes("light_hue")) {

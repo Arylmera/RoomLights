@@ -94,15 +94,18 @@ Rooms where every light is `main` render collapsed, so the page is not 15 empty 
 
 ### Flow cards
 
-The existing `setroomlights` and `setroomlightscolors` get `"deprecated": true`. Their arguments and
-their `dim`-without-`onoff` behaviour stay unchanged — per Homey's breaking-changes guidance,
-removing or altering them breaks the 8 Advanced Flows already using them. Deprecated cards remain
-functional and simply stop appearing in the picker for new Flows.
+The existing `setroomlights` and `setroomlightscolors` get `"deprecated": true`. Their **arguments**
+stay unchanged — per Homey's breaking-changes guidance, altering them breaks the 8 Advanced Flows
+already using them. Deprecated cards remain functional and simply stop appearing in the picker for
+new Flows.
 
-The one behaviour they do gain is the `excluded` filter. This is deliberate and safe: `excluded` is
-opt-in per light and empty by default, so the deprecated cards behave identically until you exclude
-something — and once you have, a card that still swept `Circadian Zone` would defeat the point of
-the role.
+They do gain two behaviours:
+
+- **The `excluded` filter.** Safe by construction: `excluded` is opt-in per light and empty by
+  default, so nothing changes until you exclude something — and once you have, a card that still
+  swept `Circadian Zone` would defeat the point of the role.
+- **`onoff: true` before the brightness**, as described under Filter semantics. This one does change
+  what existing Flows do, deliberately.
 
 Three replacements are added:
 
@@ -159,12 +162,15 @@ ambient/main split by construction, while still respecting `excluded`.
 were on and leaves the rest alone. The unambiguous way to express "everything off" is the dedicated
 card.
 
-**Set-cards must write `onoff: true` before the brightness.** The current code writes `dim` without
-touching `onoff`, so applying 40 % to a light that is off leaves it off on some devices and turns it
-on with others — behaviour that varies by bulb. With `state: All lights` the intent is explicitly
-"include the lights that are off", so the card must turn them on rather than hope the `dim` write
-does it. This is a behaviour change relative to the deprecated cards, which keep their current
-write-`dim`-only logic untouched.
+**Every set-card writes `onoff: true` before the brightness.** The original code wrote `dim` without
+touching `onoff`, so applying 40 % to a light that is off left it off on some devices and turned it
+on with others — behaviour that varied by bulb. Setting a brightness means "on", so the card says so.
+
+This was initially scoped to the new cards only, to leave existing Flows untouched. That was
+reversed on 2026-07-28 at the author's request: it is a genuine bug, the deprecated cards were the
+ones actually suffering from it, and confining the fix to new cards meant the 8 Advanced Flows kept
+the broken behaviour indefinitely. The deprecated cards' **arguments** remain frozen; only this
+write was fixed.
 
 ## Edge cases
 

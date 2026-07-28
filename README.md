@@ -67,9 +67,11 @@ Two arguments, because turning a room off shouldn't need five. There is no `stat
 
 ### Deprecated: `setroomlights` and `setroomlightscolors`
 
-The original cards. They still work and existing Flows are untouched, but they no longer appear when building a new Flow. They take `room`, `brightness` and `temperature`/`color`, apply to every light in the zone, and write `dim` without `onoff`. The one behaviour they gained is that they skip `excluded` lights.
+The original cards. They still work and their arguments are unchanged, but they no longer appear when building a new Flow. They take `room`, `brightness` and `temperature`/`color`, and apply to every light in the zone.
 
-Migrate a Flow by replacing the card with its `…role` equivalent set to `All` / `All lights`, which behaves identically apart from the explicit `onoff: true`.
+They share two behaviour fixes with the new cards: they skip `excluded` lights, and they write `onoff: true` before the brightness. The second one is a deliberate change to existing Flows — previously they wrote `dim` alone, which left a light that was off in a device-dependent state.
+
+Migrate a Flow by replacing the card with its `…role` equivalent set to `All` / `All lights`, which now behaves identically.
 
 ## Example
 
