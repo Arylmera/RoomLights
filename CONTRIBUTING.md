@@ -71,6 +71,10 @@ See the [README](README.md#development) for the rest of the development workflow
   under `.homeycompose/flow/actions/` instead.
 * Adding a Flow card means a new JSON file in `.homeycompose/flow/actions/` **and** a
   `getActionCard(...)` registration in [`app.js`](app.js). The filename must match the card id.
+* Changing a published card's arguments breaks every Flow already using it. Add
+  `"deprecated": true` to the old card, leave its run listener alone, and ship a new card instead.
+* API routes are implemented in [`api.js`](api.js) and declared in the `"api"` block of
+  `.homeycompose/app.json`. The key there is the exported function name.
 * Version bumps go in `.homeycompose/app.json`, `package.json`, and `.homeychangelog.json` together.
 
 ## License
