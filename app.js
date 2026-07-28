@@ -19,9 +19,9 @@ class RoomLights extends Homey.App {
       homey: this.homey,
     });
 
-    // Setup RoomLights variables
+    // Setup RoomLights variables. Without this map the app cannot do anything,
+    // so let a failure here fail onInit.
     await this.buildRoomLightsZones();
-    await this.watchForChanges();
 
     // Register cards
     this.homey.flow
@@ -47,6 +47,12 @@ class RoomLights extends Homey.App {
           return zone.name.toLowerCase().includes(query.toLowerCase());
         });
       });
+
+    // Best-effort: the cards above work without live updates, they just need an
+    // app restart to notice new zones or devices. Never let this break onInit.
+    this.watchForChanges().catch((err) => {
+      this.error("Could not subscribe to zone/device changes", err);
+    });
 
     this.log("Room lights has been initialized");
   }
@@ -100,7 +106,9 @@ class RoomLights extends Homey.App {
       for (let zoneId = device.zone; zoneId != null; zoneId = myHome[zoneId].parentId) {
         const zone = myHome[zoneId];
         if (zone == null) break;
-        zone.devices[device.class] ??= [];
+        if (zone.devices[device.class] == null) {
+          zone.devices[device.class] = [];
+        }
         zone.devices[device.class].push(device);
       }
     }
@@ -109,7 +117,11 @@ class RoomLights extends Homey.App {
   }
 
   roomLights(room) {
-    return this.myHome[room.id]?.devices["light"] ?? [];
+    const zone = this.myHome[room.id];
+    if (zone == null || zone.devices["light"] == null) {
+      return [];
+    }
+    return zone.devices["light"];
   }
 
   parseHexToHSL(hex) {
