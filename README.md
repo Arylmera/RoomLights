@@ -15,7 +15,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 
 On start-up the app reads your Homey zones and devices through the Homey Web API and builds an in-memory map of *zone → devices grouped by device class*. Two Flow action cards then apply a setting to every device of class `light` in the chosen zone.
 
-Zones whose name starts with an underscore (`_`) are hidden from the room autocomplete — use that prefix for zones you never want to target.
+Zones whose name starts with an underscore (`_`) are hidden from the room autocomplete — use that prefix for zones you never want to target. They still appear on the settings page, because their lights are still reached by any card targeting a parent zone, so their roles have to remain editable.
 
 ## Light roles
 

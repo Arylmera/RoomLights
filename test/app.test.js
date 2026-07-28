@@ -370,3 +370,30 @@ test("the state filter reads fresh device state, not the cached snapshot", async
   assert.deepStrictEqual(await app.roomLights({ id: "a" }, "all", "on"), []);
   assert.strictEqual((await app.roomLights({ id: "a" }, "all", "all")).length, 1);
 });
+
+test("lights in a hidden zone are still manageable from the settings page", async () => {
+  // "_" hides a zone from the room picker, not from role management. If the
+  // settings page cannot see these lights it cannot send them back, and the
+  // whole-map PUT would wipe their roles on any unrelated edit.
+  const app = fakeApp({
+    zones: {
+      home: { id: "home", name: "Home", parent: null },
+      hidden: { id: "hidden", name: "_Salon", parent: "home" },
+    },
+    devices: {
+      1: { id: 1, zone: "hidden", class: "light", name: "Buffet Strip", capabilities: ["onoff"] },
+    },
+    roles: { 1: "excluded" },
+  });
+  await app.buildRoomLightsZones();
+
+  const zones = app.getLightsByZone();
+  const names = zones.map((z) => z.name).sort();
+  assert.ok(names.includes("_Salon"), "a hidden zone with lights must still be listed");
+
+  const hidden = zones.find((z) => z.name === "_Salon");
+  assert.deepStrictEqual(hidden.lights, [{ id: 1, name: "Buffet Strip", role: "excluded" }]);
+
+  // The hidden zone stays out of the room picker.
+  assert.deepStrictEqual(app.zoneFilter.map((z) => z.name), ["Home"]);
+});

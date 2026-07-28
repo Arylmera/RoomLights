@@ -245,7 +245,11 @@ class RoomLights extends Homey.App {
     const roles = this.lightRoles();
     const zones = [];
 
-    for (const zone of this.zoneFilter) {
+    // Every zone, including the "_"-prefixed ones hidden from the room picker.
+    // Those lights are still reached by cards targeting an ancestor zone, and
+    // the settings page replaces the whole role map — so a light it cannot see
+    // is a light whose role the next unrelated save would silently wipe.
+    for (const zone of Object.values(this.myHome)) {
       const home = this.myHome[zone.id];
       if (home == null || home.devices["light"] == null) {
         continue;

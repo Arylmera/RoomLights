@@ -68,7 +68,12 @@ Only non-default roles are stored. Consequences, all deliberate:
 
 `settings/index.html`, loading `/homey.js` with `data-origin="settings"`, calling `Homey.ready()`.
 
-One section per zone that contains lights. Within a section, per non-default role:
+One section per zone that contains lights — **including `_`-prefixed zones**, which are hidden from
+the room picker but not from role management. Their lights are still reached by cards targeting an
+ancestor zone, and `PUT /roles` replaces the whole map, so a light the page cannot see is a light
+whose role the next unrelated save would silently erase.
+
+Within a section, per non-default role:
 
 - a `<select>` listing that room's lights currently holding the default role;
 - choosing one moves it into that role's table below;
