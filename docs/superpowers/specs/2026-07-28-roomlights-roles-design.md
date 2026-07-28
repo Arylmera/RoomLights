@@ -89,10 +89,15 @@ Rooms where every light is `main` render collapsed, so the page is not 15 empty 
 
 ### Flow cards
 
-The existing `setroomlights` and `setroomlightscolors` get `"deprecated": true`. Their run listeners
-stay registered and unchanged — per Homey's breaking-changes guidance, removing or altering them
-breaks the 8 Advanced Flows already using them. Deprecated cards remain functional and simply stop
-appearing in the picker for new Flows.
+The existing `setroomlights` and `setroomlightscolors` get `"deprecated": true`. Their arguments and
+their `dim`-without-`onoff` behaviour stay unchanged — per Homey's breaking-changes guidance,
+removing or altering them breaks the 8 Advanced Flows already using them. Deprecated cards remain
+functional and simply stop appearing in the picker for new Flows.
+
+The one behaviour they do gain is the `excluded` filter. This is deliberate and safe: `excluded` is
+opt-in per light and empty by default, so the deprecated cards behave identically until you exclude
+something — and once you have, a card that still swept `Circadian Zone` would defeat the point of
+the role.
 
 Three replacements are added:
 
