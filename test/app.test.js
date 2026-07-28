@@ -163,7 +163,20 @@ test("a failed event subscription still leaves the Flow cards registered", async
   };
 
   await app.onInit();
-  assert.deepStrictEqual(registered, ["setroomlights", "setroomlightscolors"]);
+  assert.deepStrictEqual(registered, [
+    "setroomlights",
+    "setroomlightscolors",
+    "setroomlightsrole",
+    "setroomlightscolorsrole",
+    "turnoffroomlights",
+  ]);
+});
+
+test("argId accepts both a dropdown id string and a value object", () => {
+  const app = new RoomLights();
+  assert.strictEqual(app.argId("ambient"), "ambient");
+  assert.strictEqual(app.argId({ id: "ambient" }), "ambient");
+  assert.strictEqual(app.argId(null), null);
 });
 
 test("a colour bulb gets hue and saturation", async () => {

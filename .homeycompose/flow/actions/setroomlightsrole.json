@@ -1,0 +1,93 @@
+{
+	"title": {
+		"en": "Set room lights"
+	},
+	"hint": {
+		"en": "Set brightness and temperature for the lights of a room, filtered by role and by whether they are already on."
+	},
+	"titleFormatted": {
+		"en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and temperature [[temperature]]"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room"
+			},
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		},
+		{
+			"type": "dropdown",
+			"name": "role",
+			"title": {
+				"en": "Lights"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All"
+					}
+				},
+				{
+					"id": "main",
+					"title": {
+						"en": "Main only"
+					}
+				},
+				{
+					"id": "ambient",
+					"title": {
+						"en": "Ambient only"
+					}
+				}
+			]
+		},
+		{
+			"type": "dropdown",
+			"name": "state",
+			"title": {
+				"en": "Apply to"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All lights"
+					}
+				},
+				{
+					"id": "on",
+					"title": {
+						"en": "Only lights already on"
+					}
+				}
+			]
+		},
+		{
+			"type": "range",
+			"name": "brightness",
+			"title": "brightness",
+			"min": 0,
+			"max": 1,
+			"step": 0.01,
+			"label": "%",
+			"labelDecimals": 0,
+			"labelMultiplier": 100
+		},
+		{
+			"type": "range",
+			"name": "temperature",
+			"title": "temperature",
+			"min": 0,
+			"max": 1,
+			"step": 0.01,
+			"label": "%",
+			"labelDecimals": 0,
+			"labelMultiplier": 100
+		}
+	]
+}

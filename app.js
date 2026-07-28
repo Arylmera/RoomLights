@@ -28,30 +28,46 @@ class RoomLights extends Homey.App {
     // so let a failure here fail onInit.
     await this.buildRoomLightsZones();
 
-    // Register cards
-    this.homey.flow
-      .getActionCard("setroomlights")
-      .registerRunListener(async (args) => {
-        const { room, brightness, temperature } = args;
-        await this.setLightsBrightness(room, brightness, temperature);
+    // Deprecated cards. Their arguments and their dim-without-onoff behaviour
+    // must not change — Advanced Flows depend on them. They only gain the
+    // excluded filter, which is a no-op until a light is marked excluded.
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("setroomlights").registerRunListener(async (args) => {
+        await this.setLightsBrightness(args.room, args.brightness, args.temperature);
       })
-      .registerArgumentAutocompleteListener("room", async (query) => {
-        return this.zoneFilter.filter((zone) => {
-          return zone.name.toLowerCase().includes(query.toLowerCase());
-        });
-      });
+    );
 
-    this.homey.flow
-      .getActionCard("setroomlightscolors")
-      .registerRunListener(async (args) => {
-        const { room, brightness, color } = args;
-        await this.setRoomLightsColors(room, brightness, color);
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("setroomlightscolors").registerRunListener(async (args) => {
+        await this.setRoomLightsColors(args.room, args.brightness, args.color);
       })
-      .registerArgumentAutocompleteListener("room", async (query) => {
-        return this.zoneFilter.filter((zone) => {
-          return zone.name.toLowerCase().includes(query.toLowerCase());
+    );
+
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("setroomlightsrole").registerRunListener(async (args) => {
+        await this.setLightsBrightness(args.room, args.brightness, args.temperature, {
+          role: this.argId(args.role),
+          state: this.argId(args.state),
+          turnOn: true,
         });
-      });
+      })
+    );
+
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("setroomlightscolorsrole").registerRunListener(async (args) => {
+        await this.setRoomLightsColors(args.room, args.brightness, args.color, {
+          role: this.argId(args.role),
+          state: this.argId(args.state),
+          turnOn: true,
+        });
+      })
+    );
+
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("turnoffroomlights").registerRunListener(async (args) => {
+        await this.turnOffRoomLights(args.room, this.argId(args.role));
+      })
+    );
 
     // Best-effort: the cards above work without live updates, they just need an
     // app restart to notice new zones or devices. Never let this break onInit.
@@ -119,6 +135,23 @@ class RoomLights extends Homey.App {
     }
 
     this.myHome = myHome;
+  }
+
+  // ponytail: dropdown args arrive as the value's id; tolerate the whole object
+  // too, so a Homey version that passes it does not break the card.
+  argId(value) {
+    if (value == null) {
+      return null;
+    }
+    return typeof value === "string" ? value : value.id;
+  }
+
+  registerRoomAutocomplete(card) {
+    return card.registerArgumentAutocompleteListener("room", async (query) => {
+      return this.zoneFilter.filter((zone) => {
+        return zone.name.toLowerCase().includes(query.toLowerCase());
+      });
+    });
   }
 
   lightRoles() {
