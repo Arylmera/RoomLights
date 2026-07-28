@@ -193,12 +193,16 @@ class RoomLights extends Homey.App {
     return [+h.toFixed(3), +s.toFixed(3), +l.toFixed(3)];
   }
 
-  async setLightsBrightness(room, brightness, temperature) {
+  async setLightsBrightness(room, brightness, temperature, options) {
+    const opts = options || {};
     await Promise.all(
-      this.roomLights(room).map(async (device) => {
+      this.roomLights(room, opts.role, opts.state).map(async (device) => {
         if (brightness === 0) {
           await device.setCapabilityValue("onoff", false);
           return;
+        }
+        if (opts.turnOn) {
+          await device.setCapabilityValue("onoff", true);
         }
         await device.setCapabilityValue("dim", brightness);
         if (device.capabilities.includes("light_temperature")) {
@@ -208,12 +212,16 @@ class RoomLights extends Homey.App {
     );
   }
 
-  async setLightsColors(room, brightness, color, saturation) {
+  async setLightsColors(room, brightness, color, saturation, options) {
+    const opts = options || {};
     await Promise.all(
-      this.roomLights(room).map(async (device) => {
+      this.roomLights(room, opts.role, opts.state).map(async (device) => {
         if (brightness === 0) {
           await device.setCapabilityValue("onoff", false);
           return;
+        }
+        if (opts.turnOn) {
+          await device.setCapabilityValue("onoff", true);
         }
         await device.setCapabilityValue("dim", brightness);
         // Lights without a hue capability just take the brightness.
@@ -225,9 +233,17 @@ class RoomLights extends Homey.App {
     );
   }
 
-  async setRoomLightsColors(room, brightness, color) {
+  async setRoomLightsColors(room, brightness, color, options) {
     const [h, s] = this.parseHexToHSL(color);
-    await this.setLightsColors(room, brightness, h, s);
+    await this.setLightsColors(room, brightness, h, s, options);
+  }
+
+  async turnOffRoomLights(room, role) {
+    await Promise.all(
+      this.roomLights(room, role).map((device) => {
+        return device.setCapabilityValue("onoff", false);
+      })
+    );
   }
 }
 

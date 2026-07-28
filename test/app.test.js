@@ -236,3 +236,56 @@ test("a stale device id in lightRoles is ignored", async () => {
   await app.buildRoomLightsZones();
   assert.deepStrictEqual(idsOf(app.roomLights({ id: "a" }, "all", "all")), [1, 2, 3]);
 });
+
+function recordingApp(capabilities, roles) {
+  const calls = [];
+  const bulb = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities,
+    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+    roles,
+  });
+  return { app, calls, bulb };
+}
+
+test("turnOn writes onoff true before the brightness", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, { turnOn: true });
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
+test("without turnOn the brightness is written alone", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, {});
+  assert.deepStrictEqual(calls, [["dim", 0.4]]);
+});
+
+test("brightness 0 turns off and never writes onoff true", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0, 0.5, { turnOn: true });
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+test("turnOffRoomLights switches off every light of the role", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.turnOffRoomLights({ id: "a" }, "all");
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+test("turnOffRoomLights leaves excluded lights alone", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"], { 1: "excluded" });
+  await app.buildRoomLightsZones();
+  await app.turnOffRoomLights({ id: "a" }, "all");
+  assert.deepStrictEqual(calls, []);
+});
