@@ -19,6 +19,16 @@
   "permissions": [
     "homey:manager:api"
   ],
+  "api": {
+    "getLights": {
+      "method": "GET",
+      "path": "/lights"
+    },
+    "setRoles": {
+      "method": "PUT",
+      "path": "/roles"
+    }
+  },
   "images": {
     "small": "/assets/images/roomLights-small.png",
     "large": "/assets/images/roomLights-large.png",

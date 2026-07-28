@@ -302,3 +302,39 @@ test("turnOffRoomLights leaves excluded lights alone", async () => {
   await app.turnOffRoomLights({ id: "a" }, "all");
   assert.deepStrictEqual(calls, []);
 });
+
+const apiZones = {
+  house: { id: "house", name: "Home", parent: null },
+  salon: { id: "salon", name: "Salon", parent: "house" },
+};
+const apiDevices = () => ({
+  1: { id: 1, zone: "salon", class: "light", name: "Salon spot 1", capabilities: ["onoff"] },
+  2: { id: 2, zone: "house", class: "light", name: "Circadian Zone", capabilities: ["onoff"] },
+});
+
+test("getLightsByZone lists each light once, under its own zone", async () => {
+  const app = fakeApp({ zones: apiZones, devices: apiDevices(), roles: { 2: "excluded" } });
+  await app.buildRoomLightsZones();
+  const byName = {};
+  for (const zone of app.getLightsByZone()) {
+    byName[zone.name] = zone.lights.map((l) => l.name + ":" + l.role).sort();
+  }
+  assert.deepStrictEqual(byName, {
+    Home: ["Circadian Zone:excluded"],
+    Salon: ["Salon spot 1:main"],
+  });
+});
+
+test("setLightRoles keeps only valid roles for known lights", async () => {
+  const app = fakeApp({ zones: apiZones, devices: apiDevices(), roles: {} });
+  await app.buildRoomLightsZones();
+  const saved = app.setLightRoles({ 1: "ambient", 2: "nonsense", 999: "excluded" });
+  assert.deepStrictEqual(saved, { 1: "ambient" });
+  assert.deepStrictEqual(app.lightRoles(), { 1: "ambient" });
+});
+
+test("setLightRoles drops main because it is the default", async () => {
+  const app = fakeApp({ zones: apiZones, devices: apiDevices(), roles: { 1: "ambient" } });
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(app.setLightRoles({ 1: "main" }), {});
+});

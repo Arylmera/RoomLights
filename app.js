@@ -226,6 +226,64 @@ class RoomLights extends Homey.App {
     return [+h.toFixed(3), +s.toFixed(3), +l.toFixed(3)];
   }
 
+  getLightsByZone() {
+    const roles = this.lightRoles();
+    const zones = [];
+
+    for (const zone of this.zoneFilter) {
+      const home = this.myHome[zone.id];
+      if (home == null || home.devices["light"] == null) {
+        continue;
+      }
+      // Only the lights that actually live in this zone. The rollup puts child
+      // devices in ancestor zones too, which would list a light many times.
+      const lights = home.devices["light"]
+        .filter((device) => device.zone === zone.id)
+        .map((device) => {
+          return {
+            id: device.id,
+            name: device.name,
+            role: roles[device.id] || DEFAULT_ROLE,
+          };
+        });
+      if (lights.length === 0) {
+        continue;
+      }
+      zones.push({ id: zone.id, name: zone.name, lights: lights });
+    }
+
+    return zones;
+  }
+
+  setLightRoles(roles) {
+    const known = new Set();
+    for (const zoneId of Object.keys(this.myHome)) {
+      const lights = this.myHome[zoneId].devices["light"];
+      if (lights == null) {
+        continue;
+      }
+      for (const device of lights) {
+        known.add(String(device.id));
+      }
+    }
+
+    const valid = {};
+    const input = roles || {};
+    for (const id of Object.keys(input)) {
+      // "main" is the default and is never stored.
+      if (input[id] !== "ambient" && input[id] !== ROLE_EXCLUDED) {
+        continue;
+      }
+      if (!known.has(String(id))) {
+        continue;
+      }
+      valid[id] = input[id];
+    }
+
+    this.homey.settings.set("lightRoles", valid);
+    return valid;
+  }
+
   async setLightsBrightness(room, brightness, temperature, options) {
     const opts = options || {};
     await Promise.all(
