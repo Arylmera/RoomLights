@@ -1,50 +1,74 @@
-# Contributing to Athom and Homey
+# Contributing to RoomLights
 
-First off all, thank you for taking the time to contribute!
+Thank you for taking the time to contribute!
 
-The following is a set of guidelines for contributing to Athom and its packages, which are hosted in the [Athom Organization](https://github.com/athombv) on GitHub. These are just guidelines, not rules. Use your best judgment, and feel free to contact us if you have any questions.
+RoomLights is a [Homey](https://homey.app) app maintained at
+[Arylmera/RoomLights](https://github.com/Arylmera/RoomLights). Issues and pull requests for the app
+belong here. For questions about Homey itself, use the
+[community forum](https://community.homey.app) or the
+[Homey Apps SDK docs](https://apps.developer.homey.app).
 
-Please join our [community slack](https://slack.athom.com), if you have not done so already.
-We also have a [community forum](https://community.homey.app) for general discussions.
+By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Getting set up
 
-## Before submitting a bug or feature request
+```bash
+npm install
+```
 
-* **Have you actually read the error message**?
-* Have you searched for similar issues?
-* Have you updated homey, all apps, and the development tools (if applicable)?
-* Have you checked that it's not a problem with one of the apps you're using, rather than Homey itself?
-* Have you looked at what's involved in fixing/implementing this?
- 
-Capable programmers should always attempt to investigate and fix problems themselves before asking for others to help. Submit a pull request instead of an issue!
+```bash
+npm test
+```
+
+The tests stub the `homey` runtime, so they run with plain Node — no Homey required. To try the app
+on real hardware you also need the [Homey CLI](https://apps.developer.homey.app/the-basics/getting-started):
+
+```bash
+homey app run
+```
+
+See the [README](README.md#development) for the rest of the development workflow.
+
+## Before submitting a bug report
+
+* Have you read the error message in `homey app run` output?
+* Have you searched for a similar issue?
+* Have you updated Homey, the app, and the CLI?
+* Is the problem in RoomLights, or in the app that provides the light device?
 
 ## A great bug report contains
 
-* Context – what were you trying to achieve?
-* Detailed steps to reproduce the error from scratch. Try isolating the minimal amount of code needed to reproduce the error.
-* Any applicable log files or ID's.
-* Evidence you've looked into solving the problem and ideally, a theory on the cause and a possible solution.
+* Context — what were you trying to achieve?
+* Steps to reproduce from scratch, with the Flow card and its arguments.
+* Which zone and what kind of lights are in it (colour, tunable white, plain on/off).
+* Relevant log output from `homey app run`.
+* Ideally a theory on the cause, and a possible fix.
 
 ## A great feature request contains
 
-* The current situation.
-* How and why the current situation is problematic.
-* A detailed proposal or pull request that demonstrates how the problem could be solved.
-* A use case – who needs this feature and why?
+* The current situation, and why it is a problem.
+* A use case — who needs this and why.
+* A proposal, or better, a pull request.
 * Any caveats.
 
 ## A great pull request contains
 
-* Minimal changes. Only submit code relevant to the current issue. Other changes should go in new pull requests.
-* Minimal commits. Please squash to a single commit before sending your pull request.
-* No conflicts. Please rebase off the latest master before submitting.
-* Code conforming to the existing conventions and formats. i.e. Please don't reformat whitespace.
-* Passing tests in the test folder (if applicable). Use existing tests as a reference.
-* Relevant documentation.
+* Minimal changes, dedicated to one issue or feature. Unrelated changes go in a separate PR.
+* No conflicts — rebase onto the latest `main` before submitting.
+* Code matching the existing style (2-space indent, double quotes, `"use strict"`). Please don't
+  reformat untouched whitespace.
+* Tests in [`test/`](test) covering the change, and `npm test` passing.
+* Updated documentation when behaviour changes.
 
-## Speeding up your pull request
-Merging pull requests takes time. While we always try to merge your pull request as soon as possible, there are certain things you can do to speed up this process.
+## Things worth knowing
 
-* Ask developers to review your code changes and post their feedback.
-* Ask users to test your changes and post their feedback.
-* Keep your changes to the minimal required amount, and dedicated to one issue/feature only.
+* **Never edit [`app.json`](app.json).** It is generated from [`.homeycompose/`](.homeycompose) by the
+  Homey CLI and your changes will be overwritten. Edit `.homeycompose/app.json` or the per-card files
+  under `.homeycompose/flow/actions/` instead.
+* Adding a Flow card means a new JSON file in `.homeycompose/flow/actions/` **and** a
+  `getActionCard(...)` registration in [`app.js`](app.js). The filename must match the card id.
+* Version bumps go in `.homeycompose/app.json`, `package.json`, and `.homeychangelog.json` together.
+
+## License
+
+Contributions are licensed under the [GPL-3.0](LICENSE) license that covers this project.
