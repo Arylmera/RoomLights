@@ -168,6 +168,7 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "turnoffroomlights",
     "condition:anyroomlightson",
     "dimroomlights",
+    "toggleroomlights",
   ]);
 });
 
@@ -410,6 +411,40 @@ test("relative dim skips a light whose dim value is unreadable", async () => {
   await app.buildRoomLightsZones();
   await app.dimRoomLights({ id: "a" }, "all", "up", 0.2);
   assert.deepStrictEqual(calls, []);
+});
+
+function toggleApp(onoffValue) {
+  const calls = [];
+  const bulb = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff", "dim", "light_temperature"],
+    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+  });
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { ...bulb, capabilitiesObj: { onoff: { value: onoffValue } } },
+  });
+  return { app, calls };
+}
+
+test("toggle turns everything off when any light is on", async () => {
+  const { app, calls } = toggleApp(true);
+  await app.buildRoomLightsZones();
+  await app.toggleRoomLights({ id: "a" }, "all", 0.6);
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+test("toggle turns the lights on at the given brightness, without touching temperature", async () => {
+  const { app, calls } = toggleApp(false);
+  await app.buildRoomLightsZones();
+  await app.toggleRoomLights({ id: "a" }, "all", 0.6);
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.6]]);
 });
 
 const apiZones = {

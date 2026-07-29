@@ -1,0 +1,61 @@
+{
+	"title": {
+		"en": "Toggle room lights"
+	},
+	"hint": {
+		"en": "If any light of the role is on, turns them all off. Otherwise turns them on at the given brightness."
+	},
+	"titleFormatted": {
+		"en": "Toggle [[role]] lights of [[room]] (on at brightness [[brightness]])"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room"
+			},
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		},
+		{
+			"type": "dropdown",
+			"name": "role",
+			"title": {
+				"en": "Lights"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All"
+					}
+				},
+				{
+					"id": "main",
+					"title": {
+						"en": "Main only"
+					}
+				},
+				{
+					"id": "ambient",
+					"title": {
+						"en": "Ambient only"
+					}
+				}
+			]
+		},
+		{
+			"type": "range",
+			"name": "brightness",
+			"title": "brightness",
+			"min": 0,
+			"max": 1,
+			"step": 0.01,
+			"label": "%",
+			"labelDecimals": 0,
+			"labelMultiplier": 100
+		}
+	]
+}

@@ -81,6 +81,12 @@ class RoomLights extends Homey.App {
       })
     );
 
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("toggleroomlights").registerRunListener(async (args) => {
+        await this.toggleRoomLights(args.room, this.argId(args.role), args.brightness);
+      })
+    );
+
     // Best-effort: the cards above work without live updates, they just need an
     // app restart to notice new zones or devices. Never let this break onInit.
     this.watchForChanges().catch((err) => {
@@ -262,6 +268,16 @@ class RoomLights extends Homey.App {
         await device.setCapabilityValue("dim", dim);
       })
     );
+  }
+
+  async toggleRoomLights(room, role, brightness) {
+    if (await this.anyLightsOn(room, role)) {
+      await this.turnOffRoomLights(room, role);
+      return;
+    }
+    // No temperature: the lights come on at the given brightness and keep
+    // whatever colour or temperature they last had.
+    await this.setLightsBrightness(room, brightness, null, { role });
   }
 
   parseHexToHSL(hex) {
