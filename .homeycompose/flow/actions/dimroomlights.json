@@ -1,0 +1,82 @@
+{
+	"title": {
+		"en": "Dim room lights up or down"
+	},
+	"hint": {
+		"en": "Raises or lowers the brightness of the room's lights that are currently on. Reaching zero turns a light off; lights that are off stay off."
+	},
+	"titleFormatted": {
+		"en": "Dim [[role]] lights of [[room]] [[direction]] by [[step]]"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room"
+			},
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		},
+		{
+			"type": "dropdown",
+			"name": "role",
+			"title": {
+				"en": "Lights"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All"
+					}
+				},
+				{
+					"id": "main",
+					"title": {
+						"en": "Main only"
+					}
+				},
+				{
+					"id": "ambient",
+					"title": {
+						"en": "Ambient only"
+					}
+				}
+			]
+		},
+		{
+			"type": "dropdown",
+			"name": "direction",
+			"title": {
+				"en": "Direction"
+			},
+			"values": [
+				{
+					"id": "up",
+					"title": {
+						"en": "up"
+					}
+				},
+				{
+					"id": "down",
+					"title": {
+						"en": "down"
+					}
+				}
+			]
+		},
+		{
+			"type": "range",
+			"name": "step",
+			"title": "step",
+			"min": 0,
+			"max": 1,
+			"step": 0.01,
+			"label": "%",
+			"labelDecimals": 0,
+			"labelMultiplier": 100
+		}
+	]
+}

@@ -75,6 +75,12 @@ class RoomLights extends Homey.App {
       })
     );
 
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("dimroomlights").registerRunListener(async (args) => {
+        await this.dimRoomLights(args.room, this.argId(args.role), this.argId(args.direction), args.step);
+      })
+    );
+
     // Best-effort: the cards above work without live updates, they just need an
     // app restart to notice new zones or devices. Never let this break onInit.
     this.watchForChanges().catch((err) => {
@@ -231,6 +237,31 @@ class RoomLights extends Homey.App {
   // through here: a light whose onoff state is unknown counts as on.
   async anyLightsOn(room, role) {
     return (await this.roomLights(room, role, "on")).length > 0;
+  }
+
+  // Relative dim only touches lights that are already on: dimming "up" must
+  // not wake a lamp nobody switched on. Unlike isOn(), an unreadable state
+  // means skip — a relative change needs a base value to be meaningful.
+  async dimRoomLights(room, role, direction, step) {
+    const fresh = await this.homeyApi.devices.getDevices();
+    const delta = direction === "down" ? -step : step;
+    await Promise.all(
+      (await this.roomLights(room, role)).map(async (device) => {
+        const caps = fresh[device.id] && fresh[device.id].capabilitiesObj;
+        if (caps == null || caps.onoff == null || caps.onoff.value !== true) {
+          return;
+        }
+        if (caps.dim == null || typeof caps.dim.value !== "number") {
+          return;
+        }
+        const dim = Math.min(1, Math.max(0, caps.dim.value + delta));
+        if (dim === 0) {
+          await device.setCapabilityValue("onoff", false);
+          return;
+        }
+        await device.setCapabilityValue("dim", dim);
+      })
+    );
   }
 
   parseHexToHSL(hex) {

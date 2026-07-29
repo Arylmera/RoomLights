@@ -167,6 +167,7 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "setroomlightscolorsrole",
     "turnoffroomlights",
     "condition:anyroomlightson",
+    "dimroomlights",
   ]);
 });
 
@@ -359,6 +360,56 @@ test("a null temperature is simply not written", async () => {
   await app.buildRoomLightsZones();
   await app.setLightsBrightness({ id: "a" }, 0.4, null, {});
   assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
+// One fresh read backs the whole relative-dim run: current onoff and dim come
+// from the same getDevices() call, never from the myHome snapshot. The fresh
+// objects spread the recording bulb because buildRoomLightsZones() reads them
+// too — a stub without setCapabilityValue would make every write throw.
+function dimApp(capabilitiesObj) {
+  const calls = [];
+  const bulb = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff", "dim"],
+    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+  });
+  app.homeyApi.devices.getDevices = async () => ({ 1: { ...bulb, capabilitiesObj } });
+  return { app, calls };
+}
+
+test("dim up raises the brightness and clamps at 1", async () => {
+  const { app, calls } = dimApp({ onoff: { value: true }, dim: { value: 0.9 } });
+  await app.buildRoomLightsZones();
+  await app.dimRoomLights({ id: "a" }, "all", "up", 0.2);
+  assert.deepStrictEqual(calls, [["dim", 1]]);
+});
+
+test("dim down to zero turns the light off instead of dim 0", async () => {
+  const { app, calls } = dimApp({ onoff: { value: true }, dim: { value: 0.1 } });
+  await app.buildRoomLightsZones();
+  await app.dimRoomLights({ id: "a" }, "all", "down", 0.2);
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+test("relative dim leaves lights that are off untouched", async () => {
+  const { app, calls } = dimApp({ onoff: { value: false }, dim: { value: 0.5 } });
+  await app.buildRoomLightsZones();
+  await app.dimRoomLights({ id: "a" }, "all", "up", 0.2);
+  assert.deepStrictEqual(calls, []);
+});
+
+test("relative dim skips a light whose dim value is unreadable", async () => {
+  const { app, calls } = dimApp({ onoff: { value: true } });
+  await app.buildRoomLightsZones();
+  await app.dimRoomLights({ id: "a" }, "all", "up", 0.2);
+  assert.deepStrictEqual(calls, []);
 });
 
 const apiZones = {
