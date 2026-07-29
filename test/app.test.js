@@ -150,6 +150,10 @@ test("a failed event subscription still leaves the Flow cards registered", async
         registered.push(id);
         return card;
       },
+      getConditionCard: (id) => {
+        registered.push("condition:" + id);
+        return card;
+      },
     },
     setTimeout: () => {},
     clearTimeout: () => {},
@@ -162,6 +166,7 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "setroomlightsrole",
     "setroomlightscolorsrole",
     "turnoffroomlights",
+    "condition:anyroomlightson",
   ]);
 });
 
@@ -246,6 +251,31 @@ test("a stale device id in lightRoles is ignored", async () => {
   const app = fakeApp({ zones: roleZones, devices: roleDevices(), roles: { 999: "excluded" } });
   await app.buildRoomLightsZones();
   assert.deepStrictEqual(idsOf(await app.roomLights({ id: "a" }, "all", "all")), [1, 2, 3]);
+});
+
+// anyLightsOn backs the condition card and the toggle. It must respect the
+// role filter and the excluded role, and read live state, not the snapshot.
+test("anyLightsOn is true only when a light of that role is on", async () => {
+  const app = await roleApp();
+  // Live state: main spot (1) off, ambient strip (2) on, excluded (3) on.
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { id: 1, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: false } } },
+    2: { id: 2, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: true } } },
+    3: { id: 3, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: true } } },
+  });
+  assert.strictEqual(await app.anyLightsOn({ id: "a" }, "ambient"), true);
+  assert.strictEqual(await app.anyLightsOn({ id: "a" }, "main"), false);
+  assert.strictEqual(await app.anyLightsOn({ id: "a" }, "all"), true);
+});
+
+test("anyLightsOn ignores excluded lights even when they are on", async () => {
+  const app = await roleApp();
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { id: 1, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: false } } },
+    2: { id: 2, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: false } } },
+    3: { id: 3, zone: "a", class: "light", capabilities: ["onoff"], capabilitiesObj: { onoff: { value: true } } },
+  });
+  assert.strictEqual(await app.anyLightsOn({ id: "a" }, "all"), false);
 });
 
 function recordingApp(capabilities, roles) {

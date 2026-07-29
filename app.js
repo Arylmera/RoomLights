@@ -67,6 +67,12 @@ class RoomLights extends Homey.App {
       })
     );
 
+    this.registerRoomAutocomplete(
+      this.homey.flow.getConditionCard("anyroomlightson").registerRunListener(async (args) => {
+        return this.anyLightsOn(args.room, this.argId(args.role));
+      })
+    );
+
     // Best-effort: the cards above work without live updates, they just need an
     // app restart to notice new zones or devices. Never let this break onInit.
     this.watchForChanges().catch((err) => {
@@ -206,6 +212,12 @@ class RoomLights extends Homey.App {
     }
 
     return lights;
+  }
+
+  // Backs the condition card and the toggle. Note the isOn() convention leaks
+  // through here: a light whose onoff state is unknown counts as on.
+  async anyLightsOn(room, role) {
+    return (await this.roomLights(room, role, "on")).length > 0;
   }
 
   parseHexToHSL(hex) {
