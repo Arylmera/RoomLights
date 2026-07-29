@@ -1,0 +1,23 @@
+{
+	"title": {
+		"en": "Save the room lights"
+	},
+	"hint": {
+		"en": "Remembers the current on/off, brightness and colour of every light in the room, replacing the previous snapshot. Restore it later with the restore card."
+	},
+	"titleFormatted": {
+		"en": "Save the lights of [[room]]"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room"
+			},
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		}
+	]
+}

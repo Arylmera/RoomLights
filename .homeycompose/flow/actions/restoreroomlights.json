@@ -1,0 +1,23 @@
+{
+	"title": {
+		"en": "Restore the room lights"
+	},
+	"hint": {
+		"en": "Puts every light of the room back to the state remembered by the save card. Does nothing when no snapshot exists."
+	},
+	"titleFormatted": {
+		"en": "Restore the lights of [[room]]"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room"
+			},
+			"placeholder": {
+				"en": "Bedroom"
+			}
+		}
+	]
+}

@@ -87,6 +87,18 @@ class RoomLights extends Homey.App {
       })
     );
 
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("saveroomlights").registerRunListener(async (args) => {
+        await this.saveRoomLights(args.room);
+      })
+    );
+
+    this.registerRoomAutocomplete(
+      this.homey.flow.getActionCard("restoreroomlights").registerRunListener(async (args) => {
+        await this.restoreRoomLights(args.room);
+      })
+    );
+
     // Best-effort: the cards above work without live updates, they just need an
     // app restart to notice new zones or devices. Never let this break onInit.
     this.watchForChanges().catch((err) => {
@@ -278,6 +290,56 @@ class RoomLights extends Homey.App {
     // No temperature: the lights come on at the given brightness and keep
     // whatever colour or temperature they last had.
     await this.setLightsBrightness(room, brightness, null, { role });
+  }
+
+  // A snapshot covers the whole room minus excluded lights — save/restore is
+  // "movie mode, then back to what it was", not a role tool. Snapshots live in
+  // app settings so they survive an app restart.
+  async saveRoomLights(room) {
+    const fresh = await this.homeyApi.devices.getDevices();
+    const snapshot = {};
+    for (const device of await this.roomLights(room)) {
+      const caps = fresh[device.id] && fresh[device.id].capabilitiesObj;
+      if (caps == null) {
+        continue;
+      }
+      const entry = { onoff: caps.onoff == null ? true : caps.onoff.value === true };
+      for (const cap of ["dim", "light_temperature", "light_hue", "light_saturation"]) {
+        if (caps[cap] != null && typeof caps[cap].value === "number") {
+          entry[cap] = caps[cap].value;
+        }
+      }
+      snapshot[device.id] = entry;
+    }
+    const all = this.homey.settings.get("lightSnapshots") || {};
+    all[room.id] = snapshot;
+    this.homey.settings.set("lightSnapshots", all);
+  }
+
+  async restoreRoomLights(room) {
+    const all = this.homey.settings.get("lightSnapshots") || {};
+    const snapshot = all[room.id];
+    if (snapshot == null) {
+      return;
+    }
+    await Promise.all(
+      (await this.roomLights(room)).map(async (device) => {
+        const saved = snapshot[device.id];
+        if (saved == null) {
+          return;
+        }
+        if (saved.onoff !== true) {
+          await device.setCapabilityValue("onoff", false);
+          return;
+        }
+        await device.setCapabilityValue("onoff", true);
+        for (const cap of ["dim", "light_temperature", "light_hue", "light_saturation"]) {
+          if (saved[cap] != null && device.capabilities.includes(cap)) {
+            await device.setCapabilityValue(cap, saved[cap]);
+          }
+        }
+      })
+    );
   }
 
   parseHexToHSL(hex) {

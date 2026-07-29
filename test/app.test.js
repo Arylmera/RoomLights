@@ -169,6 +169,8 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "condition:anyroomlightson",
     "dimroomlights",
     "toggleroomlights",
+    "saveroomlights",
+    "restoreroomlights",
   ]);
 });
 
@@ -445,6 +447,61 @@ test("toggle turns the lights on at the given brightness, without touching tempe
   await app.buildRoomLightsZones();
   await app.toggleRoomLights({ id: "a" }, "all", 0.6);
   assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.6]]);
+});
+
+function snapshotApp() {
+  const calls = [];
+  const caps = ["onoff", "dim", "light_hue", "light_saturation"];
+  const record = (id) => async (cap, value) => calls.push([id, cap, value]);
+  const spot = { id: 1, zone: "a", class: "light", name: "spot", capabilities: caps, setCapabilityValue: record(1) };
+  const strip = { id: 2, zone: "a", class: "light", name: "strip", capabilities: caps, setCapabilityValue: record(2) };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: spot, 2: strip },
+  });
+  // Live state at save time: spot on and warm, strip off.
+  app.homeyApi.devices.getDevices = async () => ({
+    1: {
+      ...spot,
+      capabilitiesObj: { onoff: { value: true }, dim: { value: 0.4 }, light_hue: { value: 0.1 }, light_saturation: { value: 1 } },
+    },
+    2: {
+      ...strip,
+      capabilitiesObj: { onoff: { value: false }, dim: { value: 0.8 } },
+    },
+  });
+  return { app, calls };
+}
+
+test("restore replays the saved state of every light", async () => {
+  const { app, calls } = snapshotApp();
+  await app.buildRoomLightsZones();
+  await app.saveRoomLights({ id: "a" });
+  await app.restoreRoomLights({ id: "a" });
+  assert.deepStrictEqual(calls.sort(), [
+    [1, "dim", 0.4],
+    [1, "light_hue", 0.1],
+    [1, "light_saturation", 1],
+    [1, "onoff", true],
+    [2, "onoff", false],
+  ].sort());
+});
+
+test("restore without a snapshot is a no-op", async () => {
+  const { app, calls } = snapshotApp();
+  await app.buildRoomLightsZones();
+  await app.restoreRoomLights({ id: "a" });
+  assert.deepStrictEqual(calls, []);
+});
+
+test("a light removed after the save is skipped on restore", async () => {
+  const { app, calls } = snapshotApp();
+  await app.buildRoomLightsZones();
+  await app.saveRoomLights({ id: "a" });
+  // The strip disappears from the zone before the restore.
+  app.myHome["a"].devices["light"] = app.myHome["a"].devices["light"].filter((d) => d.id !== 2);
+  await app.restoreRoomLights({ id: "a" });
+  assert.ok(calls.every((c) => c[0] === 1), "only the surviving light may be written to");
 });
 
 const apiZones = {
