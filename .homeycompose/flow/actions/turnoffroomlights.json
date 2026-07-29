@@ -1,47 +1,56 @@
 {
 	"title": {
-		"en": "Turn off room lights"
+		"en": "Turn off room lights",
+		"fr": "Éteindre les lumières de la pièce"
 	},
 	"hint": {
-		"en": "Turn off the lights of a room. Lights marked excluded in the app settings are never touched."
+		"en": "Turn off the lights of a room. Lights marked excluded in the app settings are never touched.",
+		"fr": "Éteint les lumières d'une pièce, filtrées par rôle. Les lumières marquées exclues dans les réglages ne sont jamais touchées."
 	},
 	"titleFormatted": {
-		"en": "Turn off [[role]] lights of [[room]]"
+		"en": "Turn off [[role]] lights of [[room]]",
+		"fr": "Éteindre les lumières [[role]] de [[room]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{
 			"type": "dropdown",
 			"name": "role",
 			"title": {
-				"en": "Lights"
+				"en": "Lights",
+				"fr": "Lumières"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All"
+						"en": "All",
+						"fr": "Toutes"
 					}
 				},
 				{
 					"id": "main",
 					"title": {
-						"en": "Main only"
+						"en": "Main only",
+						"fr": "Principales uniquement"
 					}
 				},
 				{
 					"id": "ambient",
 					"title": {
-						"en": "Ambient only"
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
 					}
 				}
 			]

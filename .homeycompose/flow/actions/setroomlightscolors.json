@@ -1,23 +1,28 @@
 {
 	"deprecated": true,
 	"title": {
-		"en": "setRoomLightsColors"
+		"en": "setRoomLightsColors",
+		"fr": "Régler la couleur des lumières de la pièce"
 	},
 	"hint": {
-		"en": "Set the brightness and the color of all the lights in a room"
+		"en": "Set the brightness and the color of all the lights in a room",
+		"fr": "Règle la luminosité et la couleur de toutes les lumières d'une pièce"
 	},
 	"titleFormatted": {
-		"en": "Set all the lights of [[room]] to brightness [[brightness]] and Color [[color]]"
+		"en": "Set all the lights of [[room]] to brightness [[brightness]] and Color [[color]]",
+		"fr": "Régler toutes les lumières de [[room]] sur luminosité [[brightness]] et couleur [[color]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{

@@ -1,23 +1,28 @@
 {
 	"deprecated": true,
 	"title": {
-		"en": "SetRoomLights"
+		"en": "SetRoomLights",
+		"fr": "Régler les lumières de la pièce"
 	},
 	"hint": {
-		"en": "Set the status of the all the lights in a room"
+		"en": "Set the status of the all the lights in a room",
+		"fr": "Règle l'état de toutes les lumières d'une pièce"
 	},
 	"titleFormatted": {
-		"en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+		"en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]",
+		"fr": "Régler toutes les lumières de [[room]] sur luminosité [[brightness]] et température [[temperature]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{

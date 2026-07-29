@@ -1,47 +1,56 @@
 {
 	"title": {
-		"en": "Toggle room lights"
+		"en": "Toggle room lights",
+		"fr": "Basculer les lumières de la pièce"
 	},
 	"hint": {
-		"en": "If any light of the role is on, turns them all off. Otherwise turns them on at the given brightness."
+		"en": "If any light of the role is on, turns them all off. Otherwise turns them on at the given brightness.",
+		"fr": "Si une lumière du rôle est allumée, les éteint toutes. Sinon les allume à la luminosité donnée."
 	},
 	"titleFormatted": {
-		"en": "Toggle [[role]] lights of [[room]] (on at brightness [[brightness]])"
+		"en": "Toggle [[role]] lights of [[room]] (on at brightness [[brightness]])",
+		"fr": "Basculer les lumières [[role]] de [[room]] (allumage à [[brightness]])"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{
 			"type": "dropdown",
 			"name": "role",
 			"title": {
-				"en": "Lights"
+				"en": "Lights",
+				"fr": "Lumières"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All"
+						"en": "All",
+						"fr": "Toutes"
 					}
 				},
 				{
 					"id": "main",
 					"title": {
-						"en": "Main only"
+						"en": "Main only",
+						"fr": "Principales uniquement"
 					}
 				},
 				{
 					"id": "ambient",
 					"title": {
-						"en": "Ambient only"
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
 					}
 				}
 			]

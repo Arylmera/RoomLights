@@ -1,22 +1,27 @@
 {
 	"title": {
-		"en": "Save the room lights"
+		"en": "Save the room lights",
+		"fr": "Mémoriser les lumières de la pièce"
 	},
 	"hint": {
-		"en": "Remembers the current on/off, brightness and colour of every light in the room, replacing the previous snapshot. Restore it later with the restore card."
+		"en": "Remembers the current on/off, brightness and colour of every light in the room, replacing the previous snapshot. Restore it later with the restore card.",
+		"fr": "Mémorise l'état actuel (allumé, luminosité, couleur) de chaque lumière de la pièce, en remplaçant la mémorisation précédente. Rétablissez-le plus tard avec la carte de rétablissement."
 	},
 	"titleFormatted": {
-		"en": "Save the lights of [[room]]"
+		"en": "Save the lights of [[room]]",
+		"fr": "Mémoriser les lumières de [[room]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		}
 	]

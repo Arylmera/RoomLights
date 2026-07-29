@@ -1,12 +1,15 @@
 {
 	"title": {
-		"en": "Set room lights colour"
+		"en": "Set room lights colour",
+		"fr": "Régler la couleur des lumières de la pièce"
 	},
 	"hint": {
-		"en": "Set brightness and colour for the lights of a room, filtered by role and by whether they are already on."
+		"en": "Set brightness and colour for the lights of a room, filtered by role and by whether they are already on.",
+		"fr": "Règle la luminosité et la couleur des lumières d'une pièce, filtrées par rôle et selon qu'elles sont déjà allumées."
 	},
 	"titleFormatted": {
-		"en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and colour [[color]]"
+		"en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and colour [[color]]",
+		"fr": "Régler les lumières [[role]] de [[room]] ([[state]]) sur luminosité [[brightness]] et couleur [[color]]"
 	},
 	"duration": true,
 	"args": [
@@ -14,35 +17,41 @@
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{
 			"type": "dropdown",
 			"name": "role",
 			"title": {
-				"en": "Lights"
+				"en": "Lights",
+				"fr": "Lumières"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All"
+						"en": "All",
+						"fr": "Toutes"
 					}
 				},
 				{
 					"id": "main",
 					"title": {
-						"en": "Main only"
+						"en": "Main only",
+						"fr": "Principales uniquement"
 					}
 				},
 				{
 					"id": "ambient",
 					"title": {
-						"en": "Ambient only"
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
 					}
 				}
 			]
@@ -51,19 +60,22 @@
 			"type": "dropdown",
 			"name": "state",
 			"title": {
-				"en": "Apply to"
+				"en": "Apply to",
+				"fr": "Appliquer à"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All lights"
+						"en": "All lights",
+						"fr": "Toutes les lumières"
 					}
 				},
 				{
 					"id": "on",
 					"title": {
-						"en": "Only lights already on"
+						"en": "Only lights already on",
+						"fr": "Seulement les lumières déjà allumées"
 					}
 				}
 			]

@@ -1,47 +1,56 @@
 {
 	"title": {
-		"en": "Dim room lights up or down"
+		"en": "Dim room lights up or down",
+		"fr": "Varier les lumières de la pièce"
 	},
 	"hint": {
-		"en": "Raises or lowers the brightness of the room's lights that are currently on. Reaching zero turns a light off; lights that are off stay off."
+		"en": "Raises or lowers the brightness of the room's lights that are currently on. Reaching zero turns a light off; lights that are off stay off.",
+		"fr": "Augmente ou diminue la luminosité des lumières déjà allumées. Atteindre zéro éteint la lumière ; les lumières éteintes le restent."
 	},
 	"titleFormatted": {
-		"en": "Dim [[role]] lights of [[room]] [[direction]] by [[step]]"
+		"en": "Dim [[role]] lights of [[room]] [[direction]] by [[step]]",
+		"fr": "Varier les lumières [[role]] de [[room]] vers [[direction]] de [[step]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{
 			"type": "dropdown",
 			"name": "role",
 			"title": {
-				"en": "Lights"
+				"en": "Lights",
+				"fr": "Lumières"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All"
+						"en": "All",
+						"fr": "Toutes"
 					}
 				},
 				{
 					"id": "main",
 					"title": {
-						"en": "Main only"
+						"en": "Main only",
+						"fr": "Principales uniquement"
 					}
 				},
 				{
 					"id": "ambient",
 					"title": {
-						"en": "Ambient only"
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
 					}
 				}
 			]
@@ -50,19 +59,22 @@
 			"type": "dropdown",
 			"name": "direction",
 			"title": {
-				"en": "Direction"
+				"en": "Direction",
+				"fr": "Direction"
 			},
 			"values": [
 				{
 					"id": "up",
 					"title": {
-						"en": "up"
+						"en": "up",
+						"fr": "le haut"
 					}
 				},
 				{
 					"id": "down",
 					"title": {
-						"en": "down"
+						"en": "down",
+						"fr": "le bas"
 					}
 				}
 			]

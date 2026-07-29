@@ -1,22 +1,27 @@
 {
 	"title": {
-		"en": "Restore the room lights"
+		"en": "Restore the room lights",
+		"fr": "Rétablir les lumières de la pièce"
 	},
 	"hint": {
-		"en": "Puts every light of the room back to the state remembered by the save card. Does nothing when no snapshot exists."
+		"en": "Puts every light of the room back to the state remembered by the save card. Does nothing when no snapshot exists.",
+		"fr": "Remet chaque lumière de la pièce dans l'état mémorisé par la carte de mémorisation. Ne fait rien sans mémorisation."
 	},
 	"titleFormatted": {
-		"en": "Restore the lights of [[room]]"
+		"en": "Restore the lights of [[room]]",
+		"fr": "Rétablir les lumières de [[room]]"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		}
 	]

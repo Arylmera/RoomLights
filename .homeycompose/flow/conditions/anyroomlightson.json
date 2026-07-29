@@ -1,47 +1,56 @@
 {
 	"title": {
-		"en": "Any light is on"
+		"en": "Any light is on",
+		"fr": "Une lumière est allumée"
 	},
 	"hint": {
-		"en": "Checks whether any light of the room, filtered by role, is currently on. Excluded lights never count."
+		"en": "Checks whether any light of the room, filtered by role, is currently on. Excluded lights never count.",
+		"fr": "Vérifie si au moins une lumière de la pièce, filtrée par rôle, est allumée. Les lumières exclues ne comptent jamais."
 	},
 	"titleFormatted": {
-		"en": "Any [[role]] light of [[room]] is !{{on|off}}"
+		"en": "Any [[role]] light of [[room]] is !{{on|off}}",
+		"fr": "Une lumière [[role]] de [[room]] est !{{allumée|éteinte}}"
 	},
 	"args": [
 		{
 			"type": "autocomplete",
 			"name": "room",
 			"title": {
-				"en": "Room"
+				"en": "Room",
+				"fr": "Pièce"
 			},
 			"placeholder": {
-				"en": "Bedroom"
+				"en": "Bedroom",
+				"fr": "Chambre"
 			}
 		},
 		{
 			"type": "dropdown",
 			"name": "role",
 			"title": {
-				"en": "Lights"
+				"en": "Lights",
+				"fr": "Lumières"
 			},
 			"values": [
 				{
 					"id": "all",
 					"title": {
-						"en": "All"
+						"en": "All",
+						"fr": "Toutes"
 					}
 				},
 				{
 					"id": "main",
 					"title": {
-						"en": "Main only"
+						"en": "Main only",
+						"fr": "Principales uniquement"
 					}
 				},
 				{
 					"id": "ambient",
 					"title": {
-						"en": "Ambient only"
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
 					}
 				}
 			]
