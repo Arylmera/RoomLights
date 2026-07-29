@@ -11,6 +11,6 @@
     "@types/node": "^20.10.6"
   },
   "dependencies": {
-    "homey-api": "^3.4.10"
+    "homey-api": "^3.19.2"
   }
 }
