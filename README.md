@@ -65,6 +65,26 @@ Same arguments, with `color` (`#RRGGBB`) in place of `temperature`. The hex is c
 
 Two arguments, because turning a room off shouldn't need five. There is no `state` argument — turning off a light that is already off is a no-op. `role: All` is the whole-room kill switch.
 
+### `anyroomlightson` — condition: "Any \[role] light of \[room] is on"
+
+The app's only **condition** card (the *…and* column). True when at least one light of the role is currently on — live state, not a cached snapshot. Excluded lights never count. Homey offers the inverted "…is off" variant automatically. A light whose on/off state cannot be read counts as on, consistent with the state filter on the set-cards.
+
+### `dimroomlights` — "Dim \[role] lights of \[room] \[direction] by \[step]"
+
+Relative dimming for wall buttons and dial remotes. Only touches lights that are already on: dimming *up* never wakes a lamp nobody switched on. Reaching zero turns the light off; a light whose current brightness cannot be read is skipped.
+
+### `toggleroomlights` — "Toggle \[role] lights of \[room] (on at brightness \[brightness])"
+
+If any light of the role is on, turns them all off; otherwise turns them on at the given brightness, keeping whatever colour or temperature they last had.
+
+### `saveroomlights` / `restoreroomlights` — "Save/Restore the lights of \[room]"
+
+The movie-mode pair. *Save* remembers on/off, brightness and colour of every light in the room (minus excluded) in app settings, replacing the room's previous snapshot; *restore* replays it. A light removed since the save is skipped; restoring a room that was never saved does nothing.
+
+### Fade duration
+
+`setroomlightsrole` and `setroomlightscolorsrole` support Homey's native duration picker. With a duration set, the brightness write becomes a fade; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
+
 ### Deprecated: `setroomlights` and `setroomlightscolors`
 
 The original cards. They still work and their arguments are unchanged, but they no longer appear when building a new Flow. They take `room`, `brightness` and `temperature`/`color`, and apply to every light in the zone.
@@ -98,7 +118,7 @@ Everything lives in a single [`app.js`](app.js) exporting one `Homey.App` subcla
 onInit()
  ├─ HomeyAPI.createAppAPI()          → authenticated Homey Web API client
  ├─ buildRoomLightsZones()           → fills this.zoneFilter and this.myHome
- ├─ registers the five action cards  → run listener + room autocomplete listener
+ ├─ registers the Flow cards         → run listener + room autocomplete listener
  └─ watchForChanges()                → rebuilds the map when zones/devices change
 ```
 
@@ -125,6 +145,11 @@ Key methods:
 | `setLightsBrightness(room, brightness, temperature)` | Backs the `setroomlights` card |
 | `setRoomLightsColors(room, brightness, color)` | Backs the `setroomlightscolors` card; converts the hex then delegates to `setLightsColors` |
 | `setLightsColors(room, brightness, hue, saturation)` | Writes `dim` / `light_hue` / `light_saturation` per device |
+| `anyLightsOn(room, role)` | **async.** True when any non-excluded light of the role is on — backs the condition card and the toggle |
+| `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; zero turns off |
+| `toggleRoomLights(room, role, brightness)` | All off if anything is on, otherwise on at the given brightness |
+| `saveRoomLights(room)` / `restoreRoomLights(room)` | Persist and replay a per-room snapshot in the `lightSnapshots` setting |
+| `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given |
 
 The map is a snapshot, so the app subscribes to Homey's realtime `device.create` / `device.delete` / `device.update` and `zone.create` / `zone.delete` / `zone.update` events and rebuilds when any of them fire. Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events — pairing several devices, or a dimming light emitting `device.update` — collapses into one rebuild.
 

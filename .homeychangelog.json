@@ -1,5 +1,9 @@
 {
   "1.0.0": {
     "en": "\"The\" \"first\" \"version\"."
+  },
+  "1.1.0": {
+    "en": "New cards: any-light-on condition, relative dim, toggle, save & restore. Fade duration on the set-cards. French translations.",
+    "fr": "Nouvelles cartes : condition lumière allumée, variation relative, bascule, mémoriser & rétablir. Durée de fondu sur les cartes de réglage. Traductions françaises."
   }
 }

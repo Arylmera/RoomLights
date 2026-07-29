@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "inc.lemer.roomLights",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibility": ">=12.9.0",
   "sdk": 3,
   "platforms": [
@@ -11,7 +11,8 @@
     "en": "RoomLights"
   },
   "description": {
-    "en": "Let you control all the lights in a defined Homey zone at once"
+    "en": "Let you control all the lights in a defined Homey zone at once",
+    "fr": "Contrôlez d'un coup toutes les lumières d'une zone Homey"
   },
   "category": [
     "lights"
@@ -40,27 +41,247 @@
     "email": "guillaume@lemer.be"
   },
   "flow": {
-    "actions": [
+    "conditions": [
       {
-        "deprecated": true,
         "title": {
-          "en": "SetRoomLights"
+          "en": "Any light is on",
+          "fr": "Une lumière est allumée"
         },
         "hint": {
-          "en": "Set the status of the all the lights in a room"
+          "en": "Checks whether any light of the room, filtered by role, is currently on. Excluded lights never count.",
+          "fr": "Vérifie si au moins une lumière de la pièce, filtrée par rôle, est allumée. Les lumières exclues ne comptent jamais."
         },
         "titleFormatted": {
-          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]"
+          "en": "Any [[role]] light of [[room]] is !{{on|off}}",
+          "fr": "Une lumière [[role]] de [[room]] est !{{allumée|éteinte}}"
         },
         "args": [
           {
             "type": "autocomplete",
             "name": "room",
             "title": {
-              "en": "Room"
+              "en": "Room",
+              "fr": "Pièce"
             },
             "placeholder": {
-              "en": "Bedroom"
+              "en": "Bedroom",
+              "fr": "Chambre"
+            }
+          },
+          {
+            "type": "dropdown",
+            "name": "role",
+            "title": {
+              "en": "Lights",
+              "fr": "Lumières"
+            },
+            "values": [
+              {
+                "id": "all",
+                "title": {
+                  "en": "All",
+                  "fr": "Toutes"
+                }
+              },
+              {
+                "id": "main",
+                "title": {
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
+                }
+              },
+              {
+                "id": "ambient",
+                "title": {
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "anyroomlightson"
+      }
+    ],
+    "actions": [
+      {
+        "title": {
+          "en": "Dim room lights up or down",
+          "fr": "Varier les lumières de la pièce"
+        },
+        "hint": {
+          "en": "Raises or lowers the brightness of the room's lights that are currently on. Reaching zero turns a light off; lights that are off stay off.",
+          "fr": "Augmente ou diminue la luminosité des lumières déjà allumées. Atteindre zéro éteint la lumière ; les lumières éteintes le restent."
+        },
+        "titleFormatted": {
+          "en": "Dim [[role]] lights of [[room]] [[direction]] by [[step]]",
+          "fr": "Varier les lumières [[role]] de [[room]] vers [[direction]] de [[step]]"
+        },
+        "args": [
+          {
+            "type": "autocomplete",
+            "name": "room",
+            "title": {
+              "en": "Room",
+              "fr": "Pièce"
+            },
+            "placeholder": {
+              "en": "Bedroom",
+              "fr": "Chambre"
+            }
+          },
+          {
+            "type": "dropdown",
+            "name": "role",
+            "title": {
+              "en": "Lights",
+              "fr": "Lumières"
+            },
+            "values": [
+              {
+                "id": "all",
+                "title": {
+                  "en": "All",
+                  "fr": "Toutes"
+                }
+              },
+              {
+                "id": "main",
+                "title": {
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
+                }
+              },
+              {
+                "id": "ambient",
+                "title": {
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
+                }
+              }
+            ]
+          },
+          {
+            "type": "dropdown",
+            "name": "direction",
+            "title": {
+              "en": "Direction",
+              "fr": "Direction"
+            },
+            "values": [
+              {
+                "id": "up",
+                "title": {
+                  "en": "up",
+                  "fr": "le haut"
+                }
+              },
+              {
+                "id": "down",
+                "title": {
+                  "en": "down",
+                  "fr": "le bas"
+                }
+              }
+            ]
+          },
+          {
+            "type": "range",
+            "name": "step",
+            "title": "step",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "label": "%",
+            "labelDecimals": 0,
+            "labelMultiplier": 100
+          }
+        ],
+        "id": "dimroomlights"
+      },
+      {
+        "title": {
+          "en": "Restore the room lights",
+          "fr": "Rétablir les lumières de la pièce"
+        },
+        "hint": {
+          "en": "Puts every light of the room back to the state remembered by the save card. Does nothing when no snapshot exists.",
+          "fr": "Remet chaque lumière de la pièce dans l'état mémorisé par la carte de mémorisation. Ne fait rien sans mémorisation."
+        },
+        "titleFormatted": {
+          "en": "Restore the lights of [[room]]",
+          "fr": "Rétablir les lumières de [[room]]"
+        },
+        "args": [
+          {
+            "type": "autocomplete",
+            "name": "room",
+            "title": {
+              "en": "Room",
+              "fr": "Pièce"
+            },
+            "placeholder": {
+              "en": "Bedroom",
+              "fr": "Chambre"
+            }
+          }
+        ],
+        "id": "restoreroomlights"
+      },
+      {
+        "title": {
+          "en": "Save the room lights",
+          "fr": "Mémoriser les lumières de la pièce"
+        },
+        "hint": {
+          "en": "Remembers the current on/off, brightness and colour of every light in the room, replacing the previous snapshot. Restore it later with the restore card.",
+          "fr": "Mémorise l'état actuel (allumé, luminosité, couleur) de chaque lumière de la pièce, en remplaçant la mémorisation précédente. Rétablissez-le plus tard avec la carte de rétablissement."
+        },
+        "titleFormatted": {
+          "en": "Save the lights of [[room]]",
+          "fr": "Mémoriser les lumières de [[room]]"
+        },
+        "args": [
+          {
+            "type": "autocomplete",
+            "name": "room",
+            "title": {
+              "en": "Room",
+              "fr": "Pièce"
+            },
+            "placeholder": {
+              "en": "Bedroom",
+              "fr": "Chambre"
+            }
+          }
+        ],
+        "id": "saveroomlights"
+      },
+      {
+        "deprecated": true,
+        "title": {
+          "en": "SetRoomLights",
+          "fr": "Régler les lumières de la pièce"
+        },
+        "hint": {
+          "en": "Set the status of the all the lights in a room",
+          "fr": "Règle l'état de toutes les lumières d'une pièce"
+        },
+        "titleFormatted": {
+          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Temperature [[temperature]]",
+          "fr": "Régler toutes les lumières de [[room]] sur luminosité [[brightness]] et température [[temperature]]"
+        },
+        "args": [
+          {
+            "type": "autocomplete",
+            "name": "room",
+            "title": {
+              "en": "Room",
+              "fr": "Pièce"
+            },
+            "placeholder": {
+              "en": "Bedroom",
+              "fr": "Chambre"
             }
           },
           {
@@ -91,23 +312,28 @@
       {
         "deprecated": true,
         "title": {
-          "en": "setRoomLightsColors"
+          "en": "setRoomLightsColors",
+          "fr": "Régler la couleur des lumières de la pièce"
         },
         "hint": {
-          "en": "Set the brightness and the color of all the lights in a room"
+          "en": "Set the brightness and the color of all the lights in a room",
+          "fr": "Règle la luminosité et la couleur de toutes les lumières d'une pièce"
         },
         "titleFormatted": {
-          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Color [[color]]"
+          "en": "Set all the lights of [[room]] to brightness [[brightness]] and Color [[color]]",
+          "fr": "Régler toutes les lumières de [[room]] sur luminosité [[brightness]] et couleur [[color]]"
         },
         "args": [
           {
             "type": "autocomplete",
             "name": "room",
             "title": {
-              "en": "Room"
+              "en": "Room",
+              "fr": "Pièce"
             },
             "placeholder": {
-              "en": "Bedroom"
+              "en": "Bedroom",
+              "fr": "Chambre"
             }
           },
           {
@@ -130,48 +356,58 @@
       },
       {
         "title": {
-          "en": "Set room lights colour"
+          "en": "Set room lights colour",
+          "fr": "Régler la couleur des lumières de la pièce"
         },
         "hint": {
-          "en": "Set brightness and colour for the lights of a room, filtered by role and by whether they are already on."
+          "en": "Set brightness and colour for the lights of a room, filtered by role and by whether they are already on.",
+          "fr": "Règle la luminosité et la couleur des lumières d'une pièce, filtrées par rôle et selon qu'elles sont déjà allumées."
         },
         "titleFormatted": {
-          "en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and colour [[color]]"
+          "en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and colour [[color]]",
+          "fr": "Régler les lumières [[role]] de [[room]] ([[state]]) sur luminosité [[brightness]] et couleur [[color]]"
         },
+        "duration": true,
         "args": [
           {
             "type": "autocomplete",
             "name": "room",
             "title": {
-              "en": "Room"
+              "en": "Room",
+              "fr": "Pièce"
             },
             "placeholder": {
-              "en": "Bedroom"
+              "en": "Bedroom",
+              "fr": "Chambre"
             }
           },
           {
             "type": "dropdown",
             "name": "role",
             "title": {
-              "en": "Lights"
+              "en": "Lights",
+              "fr": "Lumières"
             },
             "values": [
               {
                 "id": "all",
                 "title": {
-                  "en": "All"
+                  "en": "All",
+                  "fr": "Toutes"
                 }
               },
               {
                 "id": "main",
                 "title": {
-                  "en": "Main only"
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
                 }
               },
               {
                 "id": "ambient",
                 "title": {
-                  "en": "Ambient only"
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
                 }
               }
             ]
@@ -180,19 +416,22 @@
             "type": "dropdown",
             "name": "state",
             "title": {
-              "en": "Apply to"
+              "en": "Apply to",
+              "fr": "Appliquer à"
             },
             "values": [
               {
                 "id": "all",
                 "title": {
-                  "en": "All lights"
+                  "en": "All lights",
+                  "fr": "Toutes les lumières"
                 }
               },
               {
                 "id": "on",
                 "title": {
-                  "en": "Only lights already on"
+                  "en": "Only lights already on",
+                  "fr": "Seulement les lumières déjà allumées"
                 }
               }
             ]
@@ -217,48 +456,58 @@
       },
       {
         "title": {
-          "en": "Set room lights"
+          "en": "Set room lights",
+          "fr": "Régler les lumières de la pièce"
         },
         "hint": {
-          "en": "Set brightness and temperature for the lights of a room, filtered by role and by whether they are already on."
+          "en": "Set brightness and temperature for the lights of a room, filtered by role and by whether they are already on.",
+          "fr": "Règle la luminosité et la température des lumières d'une pièce, filtrées par rôle et selon qu'elles sont déjà allumées."
         },
         "titleFormatted": {
-          "en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and temperature [[temperature]]"
+          "en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and temperature [[temperature]]",
+          "fr": "Régler les lumières [[role]] de [[room]] ([[state]]) sur luminosité [[brightness]] et température [[temperature]]"
         },
+        "duration": true,
         "args": [
           {
             "type": "autocomplete",
             "name": "room",
             "title": {
-              "en": "Room"
+              "en": "Room",
+              "fr": "Pièce"
             },
             "placeholder": {
-              "en": "Bedroom"
+              "en": "Bedroom",
+              "fr": "Chambre"
             }
           },
           {
             "type": "dropdown",
             "name": "role",
             "title": {
-              "en": "Lights"
+              "en": "Lights",
+              "fr": "Lumières"
             },
             "values": [
               {
                 "id": "all",
                 "title": {
-                  "en": "All"
+                  "en": "All",
+                  "fr": "Toutes"
                 }
               },
               {
                 "id": "main",
                 "title": {
-                  "en": "Main only"
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
                 }
               },
               {
                 "id": "ambient",
                 "title": {
-                  "en": "Ambient only"
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
                 }
               }
             ]
@@ -267,19 +516,22 @@
             "type": "dropdown",
             "name": "state",
             "title": {
-              "en": "Apply to"
+              "en": "Apply to",
+              "fr": "Appliquer à"
             },
             "values": [
               {
                 "id": "all",
                 "title": {
-                  "en": "All lights"
+                  "en": "All lights",
+                  "fr": "Toutes les lumières"
                 }
               },
               {
                 "id": "on",
                 "title": {
-                  "en": "Only lights already on"
+                  "en": "Only lights already on",
+                  "fr": "Seulement les lumières déjà allumées"
                 }
               }
             ]
@@ -311,48 +563,128 @@
       },
       {
         "title": {
-          "en": "Turn off room lights"
+          "en": "Toggle room lights",
+          "fr": "Basculer les lumières de la pièce"
         },
         "hint": {
-          "en": "Turn off the lights of a room. Lights marked excluded in the app settings are never touched."
+          "en": "If any light of the role is on, turns them all off. Otherwise turns them on at the given brightness.",
+          "fr": "Si une lumière du rôle est allumée, les éteint toutes. Sinon les allume à la luminosité donnée."
         },
         "titleFormatted": {
-          "en": "Turn off [[role]] lights of [[room]]"
+          "en": "Toggle [[role]] lights of [[room]] (on at brightness [[brightness]])",
+          "fr": "Basculer les lumières [[role]] de [[room]] (allumage à [[brightness]])"
         },
         "args": [
           {
             "type": "autocomplete",
             "name": "room",
             "title": {
-              "en": "Room"
+              "en": "Room",
+              "fr": "Pièce"
             },
             "placeholder": {
-              "en": "Bedroom"
+              "en": "Bedroom",
+              "fr": "Chambre"
             }
           },
           {
             "type": "dropdown",
             "name": "role",
             "title": {
-              "en": "Lights"
+              "en": "Lights",
+              "fr": "Lumières"
             },
             "values": [
               {
                 "id": "all",
                 "title": {
-                  "en": "All"
+                  "en": "All",
+                  "fr": "Toutes"
                 }
               },
               {
                 "id": "main",
                 "title": {
-                  "en": "Main only"
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
                 }
               },
               {
                 "id": "ambient",
                 "title": {
-                  "en": "Ambient only"
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
+                }
+              }
+            ]
+          },
+          {
+            "type": "range",
+            "name": "brightness",
+            "title": "brightness",
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "label": "%",
+            "labelDecimals": 0,
+            "labelMultiplier": 100
+          }
+        ],
+        "id": "toggleroomlights"
+      },
+      {
+        "title": {
+          "en": "Turn off room lights",
+          "fr": "Éteindre les lumières de la pièce"
+        },
+        "hint": {
+          "en": "Turn off the lights of a room. Lights marked excluded in the app settings are never touched.",
+          "fr": "Éteint les lumières d'une pièce, filtrées par rôle. Les lumières marquées exclues dans les réglages ne sont jamais touchées."
+        },
+        "titleFormatted": {
+          "en": "Turn off [[role]] lights of [[room]]",
+          "fr": "Éteindre les lumières [[role]] de [[room]]"
+        },
+        "args": [
+          {
+            "type": "autocomplete",
+            "name": "room",
+            "title": {
+              "en": "Room",
+              "fr": "Pièce"
+            },
+            "placeholder": {
+              "en": "Bedroom",
+              "fr": "Chambre"
+            }
+          },
+          {
+            "type": "dropdown",
+            "name": "role",
+            "title": {
+              "en": "Lights",
+              "fr": "Lumières"
+            },
+            "values": [
+              {
+                "id": "all",
+                "title": {
+                  "en": "All",
+                  "fr": "Toutes"
+                }
+              },
+              {
+                "id": "main",
+                "title": {
+                  "en": "Main only",
+                  "fr": "Principales uniquement"
+                }
+              },
+              {
+                "id": "ambient",
+                "title": {
+                  "en": "Ambient only",
+                  "fr": "Ambiance uniquement"
                 }
               }
             ]
