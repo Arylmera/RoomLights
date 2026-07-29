@@ -48,6 +48,7 @@ class RoomLights extends Homey.App {
         await this.setLightsBrightness(args.room, args.brightness, args.temperature, {
           role: this.argId(args.role),
           state: this.argId(args.state),
+          duration: args.duration,
         });
       })
     );
@@ -57,6 +58,7 @@ class RoomLights extends Homey.App {
         await this.setRoomLightsColors(args.room, args.brightness, args.color, {
           role: this.argId(args.role),
           state: this.argId(args.state),
+          duration: args.duration,
         });
       })
     );
@@ -169,6 +171,17 @@ class RoomLights extends Homey.App {
       return true;
     }
     return capabilities.onoff.value === true;
+  }
+
+  // Homey fades a capability write when a duration (ms) is given; only the
+  // object form of setCapabilityValue carries it. Without a duration, keep the
+  // positional form the rest of the app uses.
+  async write(device, capabilityId, value, duration) {
+    if (duration == null) {
+      await device.setCapabilityValue(capabilityId, value);
+      return;
+    }
+    await device.setCapabilityValue({ capabilityId, value, duration });
   }
 
   // The device objects in myHome are a snapshot. homey-api does not promise to
@@ -318,12 +331,12 @@ class RoomLights extends Homey.App {
     await Promise.all(
       (await this.roomLights(room, opts.role, opts.state)).map(async (device) => {
         if (brightness === 0) {
-          await device.setCapabilityValue("onoff", false);
+          await this.write(device, "onoff", false, opts.duration);
           return;
         }
         await device.setCapabilityValue("onoff", true);
-        await device.setCapabilityValue("dim", brightness);
-        if (device.capabilities.includes("light_temperature")) {
+        await this.write(device, "dim", brightness, opts.duration);
+        if (temperature != null && device.capabilities.includes("light_temperature")) {
           await device.setCapabilityValue("light_temperature", temperature);
         }
       })
@@ -335,11 +348,11 @@ class RoomLights extends Homey.App {
     await Promise.all(
       (await this.roomLights(room, opts.role, opts.state)).map(async (device) => {
         if (brightness === 0) {
-          await device.setCapabilityValue("onoff", false);
+          await this.write(device, "onoff", false, opts.duration);
           return;
         }
         await device.setCapabilityValue("onoff", true);
-        await device.setCapabilityValue("dim", brightness);
+        await this.write(device, "dim", brightness, opts.duration);
         // Lights without a hue capability just take the brightness.
         if (device.capabilities.includes("light_hue")) {
           await device.setCapabilityValue("light_hue", color);

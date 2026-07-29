@@ -8,6 +8,7 @@
 	"titleFormatted": {
 		"en": "Set [[role]] lights of [[room]] ([[state]]) to brightness [[brightness]] and temperature [[temperature]]"
 	},
+	"duration": true,
 	"args": [
 		{
 			"type": "autocomplete",

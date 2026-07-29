@@ -326,6 +326,41 @@ test("turnOffRoomLights leaves excluded lights alone", async () => {
   assert.deepStrictEqual(calls, []);
 });
 
+test("a duration turns the dim write into a fade", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, { duration: 3000 });
+  // onoff stays instant — fading onoff is device-dependent; the dim carries
+  // the duration through the object form of setCapabilityValue.
+  assert.deepStrictEqual(calls, [
+    ["onoff", true],
+    [{ capabilityId: "dim", value: 0.4, duration: 3000 }, undefined],
+  ]);
+});
+
+test("brightness 0 with a duration fades to off", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0, 0.5, { duration: 3000 });
+  assert.deepStrictEqual(calls, [
+    [{ capabilityId: "onoff", value: false, duration: 3000 }, undefined],
+  ]);
+});
+
+test("no duration keeps the plain positional writes", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
+test("a null temperature is simply not written", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim", "light_temperature"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, null, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
 const apiZones = {
   house: { id: "house", name: "Home", parent: null },
   salon: { id: "salon", name: "Salon", parent: "house" },
