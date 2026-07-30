@@ -5,7 +5,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 | | |
 |---|---|
 | App ID | `inc.lemer.roomLights` |
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Homey SDK | 3 |
 | Compatibility | Homey `>=12.9.0`, platform `local` |
 | Category | lights |
@@ -13,7 +13,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 
 ## What it does
 
-On start-up the app reads your Homey zones and devices through the Homey Web API and builds an in-memory map of *zone → devices grouped by device class*. Two Flow action cards then apply a setting to every device of class `light` in the chosen zone.
+On start-up the app reads your Homey zones and devices through the Homey Web API and builds an in-memory map of *zone → devices grouped by device class*. The Flow cards then act on every device of class `light` in the chosen zone: set brightness and temperature or colour, turn off, dim up or down, toggle, save and restore, and ask whether anything is on.
 
 Zones whose name starts with an underscore (`_`) are hidden from the room autocomplete — use that prefix for zones you never want to target. They still appear on the settings page, because their lights are still reached by any card targeting a parent zone, so their roles have to remain editable.
 
@@ -29,11 +29,11 @@ Every light has a role, set on the app's **settings page** in the Homey app:
 
 Only non-default roles are stored, so an app you have never configured behaves exactly as it did before roles existed. `Excluded` overrides every filter, including `All` — it is the one setting no Flow card can talk past.
 
-The settings page lists each room with a dropdown of its lights; picking one adds it to that role's table, and the trash icon puts it back to main.
+The settings page lists each room with a dropdown of its lights; picking one adds it to that role's table, and the trash icon puts it back to main. It is available in English and French, and follows your system's light or dark theme.
 
 ## Flow cards
 
-All cards are **actions** (the *…then* column of a Flow).
+Nine **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
 
 Two dropdowns appear on the set-cards, and they are independent:
 
@@ -67,7 +67,7 @@ Two arguments, because turning a room off shouldn't need five. There is no `stat
 
 ### `anyroomlightson` — condition: "Any \[role] light of \[room] is on"
 
-The app's only **condition** card (the *…and* column). True when at least one light of the role is currently on — live state, not a cached snapshot. Excluded lights never count. Homey offers the inverted "…is off" variant automatically. A light whose on/off state cannot be read counts as on, consistent with the state filter on the set-cards.
+The app's only **condition** card (the *…and* column). True when at least one light of the role is currently on — re-read from Homey, not taken from the zone map's snapshot. Excluded lights never count. Homey offers the inverted "…is off" variant automatically. A light whose on/off state cannot be read counts as on, consistent with the state filter on the set-cards.
 
 ### `dimroomlights` — "Dim \[role] lights of \[room] \[direction] by \[step]"
 
@@ -84,6 +84,12 @@ The movie-mode pair. *Save* remembers on/off, brightness and colour of every lig
 ### Fade duration
 
 `setroomlightsrole` and `setroomlightscolorsrole` support Homey's native duration picker. With a duration set, the brightness, temperature and colour writes all become fades, so a transition does not snap its colour halfway through; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
+
+### When a light doesn't respond
+
+One unreachable bulb is normal in a Zigbee or Z-Wave room, and it does not abort the card. Every light of the selection is commanded independently; a failure is logged against that light and the rest still go where you asked. The Flow only fails when *nothing* could be reached — which is the case that actually means something is wrong, rather than one lamp being unplugged.
+
+The same applies to `restore`: lights that have gone missing since the save are skipped rather than failing the replay.
 
 ### Deprecated: `setroomlights` and `setroomlightscolors`
 
@@ -117,8 +123,8 @@ Everything lives in a single [`app.js`](app.js) exporting one `Homey.App` subcla
 ```
 onInit()
  ├─ HomeyAPI.createAppAPI()          → authenticated Homey Web API client
- ├─ buildRoomLightsZones()           → fills this.zoneFilter and this.myHome
- ├─ registers the Flow cards         → run listener + room autocomplete listener
+ ├─ buildRoomLightsZones()           → fills this.zoneFilter, this.myHome, this.deviceIndex
+ ├─ registerFlowCards()              → run listener + room autocomplete listener, one line per card
  └─ watchForChanges()                → rebuilds the map when zones/devices change
 ```
 
@@ -130,6 +136,8 @@ State held on the app instance:
 
 - **`zoneFilter`** — `[{ id, name }]`, the list backing the room autocomplete. Excludes `_`-prefixed zones.
 - **`myHome`** — `{ [zoneId]: { id, name, parentId, devices: { [deviceClass]: Device[] } } }`, every zone with its devices bucketed by class. A device is added to its own zone **and to every ancestor zone**, so targeting `Ground floor` also reaches the lights in the rooms below it.
+- **`deviceIndex`** — `Map<id, "zone|class|name">` as of the last rebuild. Compared against on each `device.update` to decide whether the map is actually affected. It stores strings rather than device references on purpose: homey-api mutates its cached `Device` in place *before* emitting, so a retained reference would always compare equal.
+- **`deviceCache` / `deviceGen`** — the shared device read behind `freshDevices()`, and the generation counter that invalidates it. Anything that makes a read obsolete — one of our writes, or a rebuild — bumps the generation, so a read that was already in flight can neither be joined afterwards nor land in the cache.
 
 Key methods:
 
@@ -137,6 +145,9 @@ Key methods:
 |---|---|
 | `buildRoomLightsZones()` | Fetches zones + devices and rebuilds the two structures above from scratch |
 | `watchForChanges()` | Subscribes to `device.*` / `zone.*` events and schedules a debounced rebuild |
+| `topologyChanged(device)` | Whether a `device.update` can actually affect the map. Anything too partial to tell counts as changed |
+| `scheduleRebuild()` | Debounces the rebuild, without letting a steady event stream defer it past the deadline |
+| `pruneSnapshots()` | Drops saved snapshots for rooms that no longer exist; never prunes against an empty zone map |
 | `roomLights(room, role, state)` | **async.** The lights of a zone after the role and state filters, or `[]` |
 | `freshDevices()` | Current device state, shared between concurrent callers and reused for 1 s; dropped by any write of ours |
 | `lightRoles()` / `setLightRoles(roles)` | Read and persist the role map in app settings |
@@ -147,11 +158,13 @@ Key methods:
 | `setLightsBrightness(room, brightness, temperature)` | Backs the `setroomlights` card |
 | `setRoomLightsColors(room, brightness, color)` | Backs the `setroomlightscolors` card; converts the hex then delegates to `setLightsColors` |
 | `setLightsColors(room, brightness, hue, saturation)` | Writes `dim` / `light_hue` / `light_saturation` per device |
+| `turnOffRoomLights(room, role)` | Backs the turn-off card, and the off half of the toggle |
 | `anyLightsOn(room, role)` | **async.** True when any non-excluded light of the role is on — backs the condition card and the toggle |
 | `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; zero turns off |
 | `toggleRoomLights(room, role, brightness)` | All off if anything is on, otherwise on at the given brightness |
 | `saveRoomLights(room)` / `restoreRoomLights(room)` | Persist and replay a per-room snapshot in the `lightSnapshots` setting |
-| `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given |
+| `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given. The duration goes in homey-api's third `opts` argument — passed anywhere else it is dropped without an error and the light simply snaps |
+| `invalidateDevices()` | Marks every outstanding device read obsolete; called by `write()` and by each rebuild |
 
 The map is a snapshot, so the app subscribes to Homey's realtime `device.create` / `device.delete` / `device.update` and `zone.create` / `zone.delete` / `zone.update` events and rebuilds when any of them fire. A `device.update` only counts when the device's zone, class or name actually changed — everything else about a device leaves the map identical — and a payload too partial to tell rebuilds anyway.
 
