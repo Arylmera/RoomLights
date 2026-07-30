@@ -4,64 +4,80 @@
     <meta charset="utf-8" />
     <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
     <style>
-      /* Colours come from Homey's own variables, which follow the theme chosen
-         in the app. prefers-color-scheme reports the operating system instead,
-         and the two disagree often enough to make the page unreadable. The
-         literals are only there for a Homey too old to define the variables.
-         The English text left in the markup is the fallback if a translation
-         is missing. */
+      /* One background and one foreground, both taken from Homey's own theme
+         variables so they always describe the same theme; every other colour is
+         mixed from that pair. Picking each colour on its own is what left pale
+         text on a pale card: Homey hands out a dark theme's text colour while
+         the surrounding dialog stays white. Painting the background ourselves
+         keeps the two in step whichever way the theme goes. prefers-color-scheme
+         is no help, it reports the operating system rather than the app. The
+         literals are for a Homey too old to define the variables, and the
+         English text left in the markup is the fallback for a missing
+         translation. */
       :root {
-        --fg: var(--homey-text-color, #111);
-        --muted: var(--homey-text-color-light, #666);
-        --faint: var(--homey-text-color-light, #888);
-        --empty: var(--homey-text-color-light, #aaa);
-        --line: var(--homey-color-mono-200, #ddd);
-        --line-soft: var(--homey-color-mono-100, #f0f0f0);
-        --field-bg: var(--homey-background-color, #fff);
-        --field-fg: var(--homey-text-color, #111);
+        --bg: var(--homey-background-color, #fff);
+        --fg: var(--homey-text-color, #16181c);
+        --muted: color-mix(in srgb, var(--fg) 72%, var(--bg));
+        --faint: color-mix(in srgb, var(--fg) 58%, var(--bg));
+        --line: color-mix(in srgb, var(--fg) 20%, var(--bg));
+        --line-soft: color-mix(in srgb, var(--fg) 10%, var(--bg));
+        --field-bg: color-mix(in srgb, var(--fg) 5%, var(--bg));
       }
       body {
         font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-        margin: 0;
-        padding: 16px;
+        margin: 0 auto;
+        padding: 20px 16px 32px;
+        max-width: 760px;
         font-size: 14px;
+        line-height: 1.45;
         color: var(--fg);
-        background: transparent;
+        background: var(--bg);
       }
-      h1 {
-        font-size: 18px;
-        margin: 0 0 4px;
+      /* Homey's own .homey-title / .homey-subtitle classes carry colours of
+         their own, so these selectors have to outweigh them. */
+      h1,
+      h1.homey-title {
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: var(--fg);
+        margin: 0 0 6px;
       }
-      p.intro {
+      p.intro,
+      p.intro.homey-subtitle {
         color: var(--muted);
-        margin: 0 0 20px;
-        line-height: 1.4;
+        margin: 0 0 22px;
+        max-width: 62ch;
       }
       h2 {
-        font-size: 15px;
-        margin: 20px 0 4px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--fg);
+        margin: 0 0 2px;
       }
       .zone {
         border-top: 1px solid var(--line);
-        padding-top: 4px;
+        margin-top: 22px;
+        padding-top: 14px;
       }
       .role {
         margin: 0 0 14px 0;
       }
-      .role h3 {
+      h3 {
         font-size: 11px;
+        font-weight: 600;
         color: var(--faint);
-        margin: 10px 0 4px;
+        margin: 12px 0 4px;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 6px;
+        margin-bottom: 8px;
       }
       td {
-        padding: 6px 0;
+        padding: 7px 0;
         border-bottom: 1px solid var(--line-soft);
       }
       td.trash {
@@ -73,42 +89,101 @@
         background: none;
         cursor: pointer;
         font-size: 15px;
-        padding: 0;
-        color: inherit;
+        padding: 2px 4px;
+        border-radius: 4px;
+        color: var(--faint);
       }
-      select {
+      button.trash:hover {
+        color: var(--fg);
+        background: var(--field-bg);
+      }
+      select,
+      select.homey-form-select {
         width: 100%;
-        padding: 6px;
-        color: var(--field-fg);
+        box-sizing: border-box;
+        font: inherit;
+        padding: 7px 8px;
+        color: var(--fg);
         background: var(--field-bg);
         border: 1px solid var(--line);
-        border-radius: 4px;
+        border-radius: 6px;
+      }
+      select:disabled {
+        color: var(--faint);
+      }
+      select:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: 1px;
       }
       .empty {
-        color: var(--empty);
+        color: var(--faint);
         font-style: italic;
-        padding: 4px 0 6px;
+        padding: 4px 0 8px;
       }
       hr {
         border: 0;
         border-top: 1px solid var(--line);
-        margin: 28px 0 20px;
+        margin: 32px 0 22px;
       }
       td.room {
-        width: 30%;
-        padding-right: 10px;
+        width: 34%;
+        padding-right: 12px;
+        font-weight: 500;
       }
       td.pick {
-        padding: 4px 0 4px 6px;
+        padding: 5px 0 5px 8px;
       }
       button.fill {
+        font: inherit;
         color: var(--fg);
         background: var(--field-bg);
         border: 1px solid var(--line);
-        border-radius: 4px;
-        padding: 6px 10px;
+        border-radius: 6px;
+        padding: 7px 12px;
         cursor: pointer;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
+      }
+      button.fill:hover {
+        border-color: var(--faint);
+      }
+      /* Homey opens the settings page in a dialog barely wider than a phone.
+         Below that width the room / brightness / temperature columns stop
+         fitting side by side, so each room becomes a block with its own
+         labels. */
+      @media (max-width: 520px) {
+        table.defaults,
+        table.defaults tbody,
+        table.defaults tr,
+        table.defaults td {
+          display: block;
+          width: auto;
+        }
+        table.defaults tr.head {
+          display: none;
+        }
+        table.defaults tr {
+          border-bottom: 1px solid var(--line-soft);
+          padding-bottom: 10px;
+        }
+        table.defaults td {
+          border: 0;
+          padding: 2px 0;
+        }
+        table.defaults td.room {
+          font-weight: 600;
+          padding-top: 10px;
+        }
+        table.defaults td.pick::before {
+          content: attr(data-label);
+          display: block;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--faint);
+          margin: 6px 0 3px;
+        }
       }
     </style>
   </head>
@@ -293,14 +368,20 @@
           return;
         }
 
+        var labels = ["defaults.brightness", "defaults.temperature"].map(function (label) {
+          return Homey.__(label);
+        });
+
         var table = document.createElement("table");
+        table.className = "defaults";
         var head = table.insertRow();
+        head.className = "head";
         head.insertCell().className = "room";
-        ["defaults.brightness", "defaults.temperature"].forEach(function (label) {
+        labels.forEach(function (label) {
           var cell = head.insertCell();
           cell.className = "pick";
           var heading = document.createElement("h3");
-          heading.textContent = Homey.__(label);
+          heading.textContent = label;
           heading.style.margin = "0";
           cell.appendChild(heading);
         });
@@ -310,9 +391,11 @@
           var name = row.insertCell();
           name.className = "room";
           name.textContent = room.name;
-          ["brightness", "temperature"].forEach(function (kind) {
+          ["brightness", "temperature"].forEach(function (kind, index) {
             var cell = row.insertCell();
             cell.className = "pick";
+            // Read back by the narrow layout, where the header row is hidden.
+            cell.setAttribute("data-label", labels[index]);
             cell.appendChild(variablePicker(Homey, room, kind));
           });
         });
