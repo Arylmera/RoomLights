@@ -8,5 +8,13 @@
     "add": "Add a light…",
     "noneLeft": "No main lights left",
     "backToMain": "Back to main"
+  },
+  "defaults": {
+    "title": "Automatic brightness",
+    "intro": "Point each room at the variables that already hold its brightness and temperature. The automatic set-card then carries no values of its own — it reads them here.",
+    "autofill": "Fill in from names",
+    "brightness": "Brightness",
+    "temperature": "Temperature",
+    "unset": "Not mapped"
   }
 }

@@ -8,5 +8,13 @@
     "add": "Ajouter une lumière…",
     "noneLeft": "Plus aucune lumière principale",
     "backToMain": "Revenir à principale"
+  },
+  "defaults": {
+    "title": "Luminosité automatique",
+    "intro": "Associez chaque pièce aux variables qui contiennent déjà sa luminosité et sa température. La carte de réglage automatique ne contient alors plus aucune valeur : elle les lit ici.",
+    "autofill": "Remplir d'après les noms",
+    "brightness": "Luminosité",
+    "temperature": "Température",
+    "unset": "Non associée"
   }
 }

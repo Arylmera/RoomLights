@@ -97,6 +97,27 @@
         font-style: italic;
         padding: 4px 0 6px;
       }
+      hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 28px 0 20px;
+      }
+      td.room {
+        width: 30%;
+        padding-right: 10px;
+      }
+      td.pick {
+        padding: 4px 0 4px 6px;
+      }
+      button.fill {
+        color: var(--fg);
+        background: var(--field-bg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 6px 10px;
+        cursor: pointer;
+        margin-bottom: 12px;
+      }
     </style>
   </head>
   <body>
@@ -107,6 +128,16 @@
     </p>
     <div id="zones"></div>
 
+    <hr />
+
+    <h1 data-i18n="defaults.title">Automatic brightness</h1>
+    <p class="intro" data-i18n="defaults.intro">
+      Point each room at the variables that already hold its brightness and temperature. The
+      automatic set-card then carries no values of its own — it reads them here.
+    </p>
+    <button class="fill" id="autofill" data-i18n="defaults.autofill">Fill in from names</button>
+    <div id="defaults"></div>
+
     <script type="text/javascript">
       var ROLES = [
         { id: "ambient", label: "settings.ambient" },
@@ -114,6 +145,10 @@
       ];
       var zones = [];
       var roles = {};
+
+      var rooms = [];
+      var variables = [];
+      var mappings = {};
 
       function onHomeyReady(Homey) {
         Homey.api("GET", "/lights", null, function (err, result) {
@@ -128,6 +163,23 @@
             });
           });
           render(Homey);
+          loadDefaults(Homey);
+        });
+      }
+
+      function loadDefaults(Homey) {
+        Homey.api("GET", "/defaults", null, function (err, result) {
+          // Reading the Logic variables can fail on its own; the roles section
+          // above is still usable, so say so and carry on.
+          if (err) Homey.alert(err);
+          rooms = (result && result.rooms) || [];
+          variables = (result && result.variables) || [];
+          mappings = (result && result.mappings) || {};
+          renderDefaults(Homey);
+          document.getElementById("autofill").onclick = function () {
+            autofill();
+            saveDefaults(Homey);
+          };
           Homey.ready();
         });
       }
@@ -222,6 +274,134 @@
         block.appendChild(select);
 
         return block;
+      }
+
+      // ------------------------------------------------- automatic brightness
+
+      function saveDefaults(Homey) {
+        Homey.api("PUT", "/defaults", mappings, function (err, saved) {
+          if (err) return Homey.alert(err);
+          // Show what was actually kept: a room with no brightness variable is
+          // dropped, and so is a variable that has since been deleted.
+          mappings = saved || {};
+          renderDefaults(Homey);
+        });
+      }
+
+      function renderDefaults(Homey) {
+        var container = document.getElementById("defaults");
+        container.innerHTML = "";
+
+        if (rooms.length === 0) {
+          var empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = Homey.__("settings.none");
+          container.appendChild(empty);
+          return;
+        }
+
+        var table = document.createElement("table");
+        var head = table.insertRow();
+        head.insertCell().className = "room";
+        ["defaults.brightness", "defaults.temperature"].forEach(function (label) {
+          var cell = head.insertCell();
+          cell.className = "pick";
+          var heading = document.createElement("h3");
+          heading.textContent = Homey.__(label);
+          heading.style.margin = "0";
+          cell.appendChild(heading);
+        });
+
+        rooms.forEach(function (room) {
+          var row = table.insertRow();
+          var name = row.insertCell();
+          name.className = "room";
+          name.textContent = room.name;
+          ["brightness", "temperature"].forEach(function (kind) {
+            var cell = row.insertCell();
+            cell.className = "pick";
+            cell.appendChild(variablePicker(Homey, room, kind));
+          });
+        });
+
+        container.appendChild(table);
+      }
+
+      function variablePicker(Homey, room, kind) {
+        var chosen = (mappings[room.id] || {})[kind] || "";
+        var select = document.createElement("select");
+
+        var none = document.createElement("option");
+        none.value = "";
+        none.textContent = Homey.__("defaults.unset");
+        select.appendChild(none);
+
+        variables.forEach(function (variable) {
+          var option = document.createElement("option");
+          option.value = variable.id;
+          option.textContent = variable.name;
+          option.selected = variable.id === chosen;
+          select.appendChild(option);
+        });
+
+        select.onchange = function () {
+          var entry = mappings[room.id] || {};
+          if (select.value) {
+            entry[kind] = select.value;
+          } else {
+            delete entry[kind];
+          }
+          mappings[room.id] = entry;
+          saveDefaults(Homey);
+        };
+
+        return select;
+      }
+
+      // A house that names its variables "<Room> - Brightness" is mapped in one
+      // click. Only empty slots are filled, so a hand-made choice survives.
+      function autofill() {
+        rooms.forEach(function (room) {
+          var entry = mappings[room.id] || {};
+          [["brightness", "brightness"], ["temperature", "temp"]].forEach(function (pair) {
+            if (entry[pair[0]] != null) return;
+            var found = suggest(room.name, pair[1]);
+            if (found) entry[pair[0]] = found;
+          });
+          if (entry.brightness != null || entry.temperature != null) {
+            mappings[room.id] = entry;
+          }
+        });
+      }
+
+      // Accent- and case-insensitive, punctuation dropped: "Salle à manger"
+      // has to reach "Salle a manger - Brightness".
+      function normalize(text) {
+        return text
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+      }
+
+      // An exact "<room> - <kind>" wins; failing that a unique prefix match.
+      // An ambiguous one is left blank rather than guessed at — "Hall" and
+      // "Hall d'entrée" are both rooms, and a wrong guess is worse than none.
+      function suggest(roomName, keyword) {
+        var room = normalize(roomName);
+        var candidates = variables.filter(function (variable) {
+          return normalize(variable.name).indexOf(keyword) >= 0;
+        });
+        var exact = candidates.filter(function (variable) {
+          return normalize(variable.name) === room + keyword;
+        });
+        if (exact.length === 1) {
+          return exact[0].id;
+        }
+        var prefixed = candidates.filter(function (variable) {
+          return normalize(variable.name).indexOf(room) === 0;
+        });
+        return prefixed.length === 1 ? prefixed[0].id : null;
       }
     </script>
   </body>

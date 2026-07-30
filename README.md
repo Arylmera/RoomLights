@@ -31,9 +31,20 @@ Only non-default roles are stored, so an app you have never configured behaves e
 
 The settings page lists each room with a dropdown of its lights; picking one adds it to that role's table, and the trash icon puts it back to main. It is available in English and French, and follows your system's light or dark theme.
 
+## Automatic brightness
+
+Most houses already compute their lighting somewhere — a circadian Flow, a scene handler, a pair of Logic variables per room. Retyping those values into every card, or dragging the same two tokens into it, is the wiring this section removes.
+
+The second half of the settings page maps each room to the Logic variables that already hold its **brightness** and its **temperature**. `setroomlightsauto` then reads them itself, so the card carries no values at all.
+
+- Variables are stored by **id**, so renaming `Salon - Temp` in Homey does not unhook the room.
+- Only **number** variables are offered; brightness and temperature are both 0–1.
+- **Fill in from names** maps every room whose variables follow the `<Room> - Brightness` / `<Room> - Temp` convention. Matching ignores case and accents. An exact match wins, then a unique prefix match; an ambiguous one is left blank rather than guessed at, because `Hall` and `Hall d'entrée` are both rooms. Only empty slots are filled, so a choice you made by hand survives the button.
+- Deleting a room discards its mapping.
+
 ## Flow cards
 
-Nine **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
+Ten **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
 
 Two dropdowns appear on the set-cards, and they are independent:
 
@@ -55,6 +66,14 @@ Writes `onoff: true` before the brightness, so a light that was off actually com
 ### `setroomlightscolorsrole` — "Set \[role] lights of \[room] (\[state]) to brightness \[brightness] and colour \[color]"
 
 Same arguments, with `color` (`#RRGGBB`) in place of `temperature`. The hex is converted to HSV — Homey's `light_hue` / `light_saturation` / `dim` triple is HSV, with `dim` as the value channel — and the hue and saturation are written to the bulb. Lights without `light_hue` (plain white bulbs) simply take the brightness and ignore the colour. A malformed colour fails the card rather than writing nonsense to a bulb.
+
+### `setroomlightsauto` — "Set \[role] lights of \[room] (\[state]) to its mapped brightness and temperature"
+
+The same card as `setroomlightsrole` with the two value arguments removed: `room`, `role`, `state`, and a fade duration. Brightness and temperature come from the Logic variables the room is mapped to on the settings page, read at run time — so a circadian Flow that moves those variables moves every Flow using this card, and no Flow has to carry the values.
+
+A mapped brightness of `0` still means off, exactly as a typed `0` does. Values outside 0–1 are clamped rather than sent to a bulb.
+
+The card **fails** when the room has no brightness variable mapped, or when that variable has been deleted or no longer holds a number — the error names the room. Doing nothing there would look exactly like a broken card. A missing *temperature* is not an error: the lights take the brightness and keep the tint they had, which is what a null temperature has always meant here.
 
 ### `turnoffroomlights` — "Turn off \[role] lights of \[room]"
 
@@ -83,7 +102,7 @@ The movie-mode pair. *Save* remembers on/off, brightness and colour of every lig
 
 ### Fade duration
 
-`setroomlightsrole` and `setroomlightscolorsrole` support Homey's native duration picker. With a duration set, the brightness, temperature and colour writes all become fades, so a transition does not snap its colour halfway through; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
+`setroomlightsrole`, `setroomlightscolorsrole` and `setroomlightsauto` support Homey's native duration picker. With a duration set, the brightness, temperature and colour writes all become fades, so a transition does not snap its colour halfway through; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
 
 ### When a light doesn't respond
 
@@ -138,6 +157,7 @@ State held on the app instance:
 - **`myHome`** — `{ [zoneId]: { id, name, parentId, devices: { [deviceClass]: Device[] } } }`, every zone with its devices bucketed by class. A device is added to its own zone **and to every ancestor zone**, so targeting `Ground floor` also reaches the lights in the rooms below it.
 - **`deviceIndex`** — `Map<id, "zone|class|name">` as of the last rebuild. Compared against on each `device.update` to decide whether the map is actually affected. It stores strings rather than device references on purpose: homey-api mutates its cached `Device` in place *before* emitting, so a retained reference would always compare equal.
 - **`deviceCache` / `deviceGen`** — the shared device read behind `freshDevices()`, and the generation counter that invalidates it. Anything that makes a read obsolete — one of our writes, or a rebuild — bumps the generation, so a read that was already in flight can neither be joined afterwards nor land in the cache.
+- **`variableCache`** — the same shape for `logicVariables()`, minus the generation counter: the app only ever reads Logic variables, so nothing it does can make a read stale.
 
 Key methods:
 
@@ -147,11 +167,16 @@ Key methods:
 | `watchForChanges()` | Subscribes to `device.*` / `zone.*` events and schedules a debounced rebuild |
 | `topologyChanged(device)` | Whether a `device.update` can actually affect the map. Anything too partial to tell counts as changed |
 | `scheduleRebuild()` | Debounces the rebuild, without letting a steady event stream defer it past the deadline |
-| `pruneSnapshots()` | Drops saved snapshots for rooms that no longer exist; never prunes against an empty zone map |
+| `pruneByRoom(key)` | Drops entries of a room-keyed setting (`lightSnapshots`, `roomDefaults`) for rooms that no longer exist; never prunes against an empty zone map |
 | `roomLights(room, role, state)` | **async.** The lights of a zone after the role and state filters, or `[]` |
 | `freshDevices()` | Current device state, shared between concurrent callers and reused for 1 s; dropped by any write of ours |
 | `lightRoles()` / `setLightRoles(roles)` | Read and persist the role map in app settings |
 | `getLightsByZone()` | Rooms with their own lights and roles, for the settings page |
+| `logicVariables()` | **async.** Every Logic variable, shared between concurrent callers and reused for 1 s |
+| `roomDefaults()` | The room → `{ brightness, temperature }` variable-id map from app settings |
+| `roomDefaultValues(room)` | **async.** Resolves that mapping to numbers, clamped to 0–1. Throws when the brightness variable is unmapped, gone, or not a number; a missing temperature resolves to `null` |
+| `setRoomLightsAuto(room, options)` | Backs the automatic card: resolve, then the ordinary `setLightsBrightness()` |
+| `getRoomDefaultsPage()` / `setRoomDefaults(mappings)` | **async.** Read and persist the mapping for the settings page; the save keeps only picker rooms and number variables |
 | `parseHexToHSV(hex)` | `#RRGGBB` → `[h, s, v]`, each normalised to 0–1 and rounded to 3 decimals; throws on anything that is not a `#RRGGBB` string |
 | `applyBrightness(room, brightness, options, tint)` | Shared body of the set-cards: `0` means off, otherwise `onoff` then `dim` then the caller's colour write |
 | `eachLight(lights, run)` | Runs a command against every light, tolerating individual failures; throws only if all of them failed |
@@ -175,7 +200,7 @@ Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events colla
 ```
 app.js                      the app: zone map, role filtering, Flow cards
 api.js                      HTTP routes the settings page calls
-settings/index.html         the role editor shown in the Homey app
+settings/index.html         the role editor and the room → variable mapping
 app.json                    GENERATED — do not edit by hand
 .homeycompose/
   app.json                  app manifest source, including the api routes

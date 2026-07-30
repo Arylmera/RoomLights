@@ -1,0 +1,84 @@
+{
+	"title": {
+		"en": "Set room lights (automatic)",
+		"fr": "Régler les lumières de la pièce (automatique)"
+	},
+	"hint": {
+		"en": "Set brightness and temperature from the variables mapped to this room in the app settings, so the card carries no values of its own.",
+		"fr": "Règle la luminosité et la température à partir des variables associées à cette pièce dans les réglages de l'app, sans valeurs dans la carte."
+	},
+	"titleFormatted": {
+		"en": "Set [[role]] lights of [[room]] ([[state]]) to its mapped brightness and temperature",
+		"fr": "Régler les lumières [[role]] de [[room]] ([[state]]) sur sa luminosité et sa température associées"
+	},
+	"duration": true,
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room",
+				"fr": "Pièce"
+			},
+			"placeholder": {
+				"en": "Bedroom",
+				"fr": "Chambre"
+			}
+		},
+		{
+			"type": "dropdown",
+			"name": "role",
+			"title": {
+				"en": "Lights",
+				"fr": "Lumières"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All",
+						"fr": "Toutes"
+					}
+				},
+				{
+					"id": "main",
+					"title": {
+						"en": "Main only",
+						"fr": "Principales uniquement"
+					}
+				},
+				{
+					"id": "ambient",
+					"title": {
+						"en": "Ambient only",
+						"fr": "Ambiance uniquement"
+					}
+				}
+			]
+		},
+		{
+			"type": "dropdown",
+			"name": "state",
+			"title": {
+				"en": "Apply to",
+				"fr": "Appliquer à"
+			},
+			"values": [
+				{
+					"id": "all",
+					"title": {
+						"en": "All lights",
+						"fr": "Toutes les lumières"
+					}
+				},
+				{
+					"id": "on",
+					"title": {
+						"en": "Only lights already on",
+						"fr": "Seulement les lumières déjà allumées"
+					}
+				}
+			]
+		}
+	]
+}

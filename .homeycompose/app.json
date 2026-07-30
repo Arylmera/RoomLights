@@ -1,6 +1,6 @@
 {
 	"id": "inc.lemer.roomLights",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"compatibility": ">=12.9.0",
 	"sdk": 3,
 	"platforms": ["local"],
@@ -21,6 +21,14 @@
 		"setRoles": {
 			"method": "PUT",
 			"path": "/roles"
+		},
+		"getDefaults": {
+			"method": "GET",
+			"path": "/defaults"
+		},
+		"setDefaults": {
+			"method": "PUT",
+			"path": "/defaults"
 		}
 	},
 	"images": {

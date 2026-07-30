@@ -5,5 +5,9 @@
   "1.1.0": {
     "en": "New cards: any-light-on condition, relative dim, toggle, save & restore. Fade duration on the set-cards. French translations.",
     "fr": "Nouvelles cartes : condition lumière allumée, variation relative, bascule, mémoriser & rétablir. Durée de fondu sur les cartes de réglage. Traductions françaises."
+  },
+  "1.2.0": {
+    "en": "Map each room to its brightness and temperature variables in the app settings, then use the new automatic set-card, which carries no values of its own.",
+    "fr": "Associez chaque pièce à ses variables de luminosité et de température dans les réglages, puis utilisez la nouvelle carte de réglage automatique, qui ne contient plus aucune valeur."
   }
 }

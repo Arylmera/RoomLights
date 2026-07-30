@@ -20,6 +20,12 @@ const REBUILD_MAX_WAIT_MS = 30000;
 // missed; tune it down if that ever matters more than the round-trips.
 const DEVICE_CACHE_MS = 1000;
 
+// Logic variables are read the same way, but need no invalidation: the app only
+// ever reads them, so nothing it does can make a read stale. They move on a
+// schedule (a circadian Flow), never per keypress, so this only exists to keep
+// a held wall button from turning every card repeat into a round-trip.
+const VARIABLE_CACHE_MS = 1000;
+
 // A light's role is stored only when it is not the default, so an unconfigured
 // app behaves exactly as it did before roles existed.
 const DEFAULT_ROLE = "main";
@@ -42,6 +48,11 @@ class RoomLights extends Homey.App {
   deviceFetch = null;
   deviceFetchGen = -1;
   deviceGen = 0;
+
+  // Logic variables, see logicVariables().
+  variableCache = null;
+  variableCacheAt = 0;
+  variableFetch = null;
 
   // id -> topologyKey() as of the last rebuild, see topologyChanged().
   deviceIndex = new Map();
@@ -100,6 +111,7 @@ class RoomLights extends Homey.App {
     action("toggleroomlights", (a) => this.toggleRoomLights(a.room, this.argId(a.role), a.brightness));
     action("saveroomlights", (a) => this.saveRoomLights(a.room));
     action("restoreroomlights", (a) => this.restoreRoomLights(a.room));
+    action("setroomlightsauto", (a) => this.setRoomLightsAuto(a.room, this.filters(a)));
   }
 
   /**
@@ -200,14 +212,15 @@ class RoomLights extends Homey.App {
 
     this.myHome = myHome;
     this.deviceIndex = deviceIndex;
-    this.pruneSnapshots();
+    this.pruneByRoom("lightSnapshots");
+    this.pruneByRoom("roomDefaults");
   }
 
-  // Rooms get deleted; their snapshots would otherwise sit in app settings
-  // forever. Never prune against an empty map — a read that came back with no
-  // zones at all is a failure, not a house with no rooms.
-  pruneSnapshots() {
-    const all = this.homey.settings.get("lightSnapshots");
+  // Rooms get deleted; anything keyed by room would otherwise sit in app
+  // settings forever. Never prune against an empty map — a read that came back
+  // with no zones at all is a failure, not a house with no rooms.
+  pruneByRoom(key) {
+    const all = this.homey.settings.get(key);
     if (all == null || Object.keys(this.myHome).length === 0) {
       return;
     }
@@ -218,7 +231,7 @@ class RoomLights extends Homey.App {
     for (const roomId of stale) {
       delete all[roomId];
     }
-    this.homey.settings.set("lightSnapshots", all);
+    this.homey.settings.set(key, all);
   }
 
   // ------------------------------------------------------------ card arguments
@@ -457,6 +470,69 @@ class RoomLights extends Homey.App {
     await this.setLightsBrightness(room, brightness, null, { role });
   }
 
+  // ------------------------------------------------------------ room defaults
+
+  // room id -> { brightness, temperature } Logic variable ids. Variables are
+  // referenced by id, not by name: renaming "Salon - Temp" in Homey must not
+  // quietly unhook the room.
+  roomDefaults() {
+    return this.homey.settings.get("roomDefaults") || {};
+  }
+
+  // See VARIABLE_CACHE_MS. Concurrent callers share one request.
+  async logicVariables() {
+    if (this.variableCache != null && Date.now() - this.variableCacheAt < VARIABLE_CACHE_MS) {
+      return this.variableCache;
+    }
+    if (this.variableFetch == null) {
+      this.variableFetch = this.homeyApi.logic.getVariables().then(
+        (variables) => {
+          this.variableCache = variables;
+          this.variableCacheAt = Date.now();
+          this.variableFetch = null;
+          return variables;
+        },
+        (err) => {
+          // Clear it, so the next caller retries instead of joining a promise
+          // that already rejected.
+          this.variableFetch = null;
+          throw err;
+        }
+      );
+    }
+    return this.variableFetch;
+  }
+
+  // A capability value, or null when the variable is gone or holds something
+  // that is not a number — a Logic variable can be deleted or retyped at any
+  // time, and NaN must never reach a bulb.
+  variableValue(variables, id) {
+    const variable = id == null ? null : variables[id];
+    if (variable == null || typeof variable.value !== "number" || !Number.isFinite(variable.value)) {
+      return null;
+    }
+    return Math.min(1, Math.max(0, variable.value));
+  }
+
+  // Brightness is what makes the card mean anything, so a missing one fails
+  // loudly: staying silent looks exactly like a broken card. A missing
+  // temperature is a room that is simply not tinted, which the write path
+  // already expresses as null.
+  async roomDefaultValues(room) {
+    const mapping = this.roomDefaults()[room.id] || {};
+    const variables = await this.logicVariables();
+    const brightness = this.variableValue(variables, mapping.brightness);
+    if (brightness == null) {
+      throw new Error(`No brightness variable mapped for ${room.name || room.id} — set one in the app settings.`);
+    }
+    return { brightness, temperature: this.variableValue(variables, mapping.temperature) };
+  }
+
+  async setRoomLightsAuto(room, options) {
+    const { brightness, temperature } = await this.roomDefaultValues(room);
+    await this.setLightsBrightness(room, brightness, temperature, options);
+  }
+
   // ---------------------------------------------------------------- snapshots
 
   // A snapshot covers the whole room minus excluded lights — save/restore is
@@ -579,6 +655,48 @@ class RoomLights extends Homey.App {
     }
 
     return zones;
+  }
+
+  // Everything the defaults section of the settings page needs, in one read.
+  // Only the rooms the card can target are offered, and only number variables:
+  // brightness and temperature are both 0-1 numbers.
+  async getRoomDefaultsPage() {
+    const variables = Object.values(await this.logicVariables())
+      .filter((variable) => variable.type === "number")
+      .map((variable) => ({ id: variable.id, name: variable.name }));
+    return { rooms: this.zoneFilter, variables, mappings: this.roomDefaults() };
+  }
+
+  // The page sends the whole map back, so anything it could not see would be
+  // wiped by an unrelated edit. It sees every room in the picker and every
+  // number variable, which is exactly what is kept here.
+  async setRoomDefaults(mappings) {
+    const variables = await this.logicVariables();
+    const isNumberVariable = (id) =>
+      id != null && variables[id] != null && variables[id].type === "number";
+    const rooms = new Set(this.zoneFilter.map((zone) => zone.id));
+
+    const valid = {};
+    const input = mappings || {};
+    for (const roomId of Object.keys(input)) {
+      if (!rooms.has(roomId)) {
+        continue;
+      }
+      const entry = {};
+      for (const kind of ["brightness", "temperature"]) {
+        if (isNumberVariable(input[roomId][kind])) {
+          entry[kind] = input[roomId][kind];
+        }
+      }
+      // A room with no brightness variable has nothing worth storing: the card
+      // fails on it either way.
+      if (entry.brightness != null) {
+        valid[roomId] = entry;
+      }
+    }
+
+    this.homey.settings.set("roomDefaults", valid);
+    return valid;
   }
 
   setLightRoles(roles) {

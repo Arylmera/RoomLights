@@ -16,9 +16,9 @@ Module._load = (request, ...rest) => {
 const RoomLights = require("../app.js");
 Module._load = load;
 
-function fakeApp({ zones, devices, roles }) {
+function fakeApp({ zones, devices, roles, variables, defaults }) {
   const app = new RoomLights();
-  const stored = { lightRoles: roles || {} };
+  const stored = { lightRoles: roles || {}, roomDefaults: defaults || {} };
   app.homey = {
     settings: {
       get: (key) => stored[key],
@@ -32,6 +32,7 @@ function fakeApp({ zones, devices, roles }) {
   app.homeyApi = {
     zones: { getZones: async () => zones },
     devices: { getDevices: async () => devices },
+    logic: { getVariables: async () => variables || {} },
   };
   return app;
 }
@@ -193,6 +194,7 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "toggleroomlights",
     "saveroomlights",
     "restoreroomlights",
+    "setroomlightsauto",
   ]);
 });
 
@@ -925,6 +927,170 @@ test("the state filter reads fresh device state, not the cached snapshot", async
 
   assert.deepStrictEqual(await app.roomLights({ id: "a" }, "all", "on"), []);
   assert.strictEqual((await app.roomLights({ id: "a" }, "all", "all")).length, 1);
+});
+
+// The automatic card carries no values of its own: it reads the Logic
+// variables the room is mapped to in the settings, then takes the ordinary
+// set-lights path.
+const salonVariables = () => ({
+  b: { id: "b", name: "Salon - Brightness", type: "number", value: 0.4 },
+  t: { id: "t", name: "Salon - Temp", type: "number", value: 0.7 },
+  s: { id: "s", name: "Salon - Scene", type: "string", value: "Auto" },
+});
+const salonMapping = { salon: { brightness: "b", temperature: "t" } };
+
+function autoApp(variables, defaults) {
+  const calls = [];
+  const bulb = {
+    id: 1,
+    zone: "salon",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff", "dim", "light_temperature"],
+    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+  };
+  const app = fakeApp({
+    zones: { salon: { id: "salon", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+    variables,
+    defaults,
+  });
+  return { app, calls };
+}
+
+const salon = { id: "salon", name: "Salon" };
+
+test("the automatic card applies the mapped brightness and temperature", async () => {
+  const { app, calls } = autoApp(salonVariables(), salonMapping);
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, { role: "all", state: "all" });
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4], ["light_temperature", 0.7]]);
+});
+
+test("a room with no temperature mapped keeps the tint it had", async () => {
+  const { app, calls } = autoApp(salonVariables(), { salon: { brightness: "b" } });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
+test("a mapped brightness of 0 still means off", async () => {
+  const variables = salonVariables();
+  variables.b.value = 0;
+  const { app, calls } = autoApp(variables, salonMapping);
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, {});
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+// Doing nothing here would look exactly like a broken card, so it fails and
+// says which room to go and fix.
+test("an unmapped room fails the card by name", async () => {
+  const { app, calls } = autoApp(salonVariables(), {});
+  await app.buildRoomLightsZones();
+  await assert.rejects(() => app.setRoomLightsAuto(salon, {}), /brightness variable mapped for Salon/);
+  assert.deepStrictEqual(calls, []);
+});
+
+test("a deleted or retyped brightness variable fails the card", async () => {
+  // A Logic variable can be deleted or turned into text at any time, and the
+  // mapping only holds its id.
+  const gone = salonVariables();
+  delete gone.b;
+  const text = salonVariables();
+  text.b = { id: "b", name: "Salon - Brightness", type: "string", value: "bright" };
+  for (const variables of [gone, text]) {
+    const { app, calls } = autoApp(variables, salonMapping);
+    await app.buildRoomLightsZones();
+    await assert.rejects(() => app.setRoomLightsAuto(salon, {}), /brightness variable mapped/);
+    assert.deepStrictEqual(calls, []);
+  }
+});
+
+test("a temperature that went missing leaves the brightness working", async () => {
+  const variables = salonVariables();
+  delete variables.t;
+  const { app, calls } = autoApp(variables, salonMapping);
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
+});
+
+test("a value outside 0-1 is clamped instead of reaching the bulb", async () => {
+  const variables = salonVariables();
+  variables.b.value = 1.4;
+  variables.t.value = -0.2;
+  const { app, calls } = autoApp(variables, salonMapping);
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 1], ["light_temperature", 0]]);
+});
+
+test("a burst of automatic cards shares one variable read", async () => {
+  const { app } = autoApp(salonVariables(), salonMapping);
+  let reads = 0;
+  const variables = salonVariables();
+  app.homeyApi.logic.getVariables = async () => {
+    reads += 1;
+    return variables;
+  };
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salon, {});
+  await app.setRoomLightsAuto(salon, {});
+  await Promise.all([app.setRoomLightsAuto(salon, {}), app.setRoomLightsAuto(salon, {})]);
+  assert.strictEqual(reads, 1, "a held wall button must not read the variables once per repeat");
+});
+
+test("a rejected variable read is retried rather than joined forever", async () => {
+  const { app } = autoApp(salonVariables(), salonMapping);
+  await app.buildRoomLightsZones();
+  let fail = true;
+  app.homeyApi.logic.getVariables = async () => {
+    if (fail) throw new Error("no route to host");
+    return salonVariables();
+  };
+  await assert.rejects(() => app.setRoomLightsAuto(salon, {}), /no route/);
+  fail = false;
+  await app.setRoomLightsAuto(salon, {});
+});
+
+test("the settings page is offered the picker rooms and only number variables", async () => {
+  const { app } = autoApp(salonVariables(), salonMapping);
+  await app.buildRoomLightsZones();
+  const page = await app.getRoomDefaultsPage();
+  assert.deepStrictEqual(page.rooms, [{ id: "salon", name: "Salon" }]);
+  assert.deepStrictEqual(page.variables, [
+    { id: "b", name: "Salon - Brightness" },
+    { id: "t", name: "Salon - Temp" },
+  ]);
+  assert.deepStrictEqual(page.mappings, salonMapping);
+});
+
+test("setRoomDefaults keeps only known rooms and number variables", async () => {
+  const { app } = autoApp(salonVariables(), {});
+  await app.buildRoomLightsZones();
+  const saved = await app.setRoomDefaults({
+    salon: { brightness: "b", temperature: "s" }, // scene is text, not a temperature
+    nowhere: { brightness: "b" },
+  });
+  assert.deepStrictEqual(saved, { salon: { brightness: "b" } });
+  assert.deepStrictEqual(app.roomDefaults(), { salon: { brightness: "b" } });
+});
+
+test("a room mapped to a temperature but no brightness is not stored", async () => {
+  const { app } = autoApp(salonVariables(), {});
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(await app.setRoomDefaults({ salon: { temperature: "t" } }), {});
+});
+
+test("a deleted room takes its mapping with it, a failed zone read does not", async () => {
+  const { app } = autoApp(salonVariables(), { ...salonMapping, gone: { brightness: "b" } });
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(Object.keys(app.roomDefaults()), ["salon"]);
+
+  app.homeyApi.zones.getZones = async () => ({});
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(Object.keys(app.roomDefaults()), ["salon"], "a broken read is not an empty house");
 });
 
 test("lights in a hidden zone are still manageable from the settings page", async () => {
