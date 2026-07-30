@@ -1,0 +1,12 @@
+{
+  "settings": {
+    "title": "Rôles des lumières",
+    "intro": "Chaque lumière est principale sauf indication contraire. Les cartes Flow peuvent cibler séparément les lumières principales ou d'ambiance. Les lumières exclues ne sont jamais touchées par aucune carte, quelle que soit sa cible.",
+    "ambient": "Ambiance",
+    "excluded": "Exclue — jamais touchée",
+    "none": "Aucune",
+    "add": "Ajouter une lumière…",
+    "noneLeft": "Plus aucune lumière principale",
+    "backToMain": "Revenir à principale"
+  }
+}

@@ -54,7 +54,7 @@ Writes `onoff: true` before the brightness, so a light that was off actually com
 
 ### `setroomlightscolorsrole` — "Set \[role] lights of \[room] (\[state]) to brightness \[brightness] and colour \[color]"
 
-Same arguments, with `color` (`#RRGGBB`) in place of `temperature`. The hex is converted to HSL and written to `light_hue` / `light_saturation`. Lights without `light_hue` (plain white bulbs) simply take the brightness and ignore the colour.
+Same arguments, with `color` (`#RRGGBB`) in place of `temperature`. The hex is converted to HSV — Homey's `light_hue` / `light_saturation` / `dim` triple is HSV, with `dim` as the value channel — and the hue and saturation are written to the bulb. Lights without `light_hue` (plain white bulbs) simply take the brightness and ignore the colour. A malformed colour fails the card rather than writing nonsense to a bulb.
 
 ### `turnoffroomlights` — "Turn off \[role] lights of \[room]"
 
@@ -79,11 +79,11 @@ If any light of the role is on, turns them all off; otherwise turns them on at t
 
 ### `saveroomlights` / `restoreroomlights` — "Save/Restore the lights of \[room]"
 
-The movie-mode pair. *Save* remembers on/off, brightness and colour of every light in the room (minus excluded) in app settings, replacing the room's previous snapshot; *restore* replays it. A light removed since the save is skipped; restoring a room that was never saved does nothing.
+The movie-mode pair. *Save* remembers on/off, brightness and colour of every light in the room (minus excluded) in app settings, replacing the room's previous snapshot; *restore* replays it. A light removed since the save is skipped. Restoring a room that was never saved **fails the card** — silently doing nothing there just looks like the card is broken. Deleting a room discards its snapshot.
 
 ### Fade duration
 
-`setroomlightsrole` and `setroomlightscolorsrole` support Homey's native duration picker. With a duration set, the brightness write becomes a fade; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
+`setroomlightsrole` and `setroomlightscolorsrole` support Homey's native duration picker. With a duration set, the brightness, temperature and colour writes all become fades, so a transition does not snap its colour halfway through; the on/off write stays instant, so a light that was off jumps on and then fades to the target. The deprecated cards do not get durations.
 
 ### Deprecated: `setroomlights` and `setroomlightscolors`
 
@@ -138,10 +138,12 @@ Key methods:
 | `buildRoomLightsZones()` | Fetches zones + devices and rebuilds the two structures above from scratch |
 | `watchForChanges()` | Subscribes to `device.*` / `zone.*` events and schedules a debounced rebuild |
 | `roomLights(room, role, state)` | **async.** The lights of a zone after the role and state filters, or `[]` |
-| `lightStates()` | Re-reads devices to get current `onoff` — called only when `state` is `on` |
+| `freshDevices()` | Current device state, shared between concurrent callers and reused for 1 s; dropped by any write of ours |
 | `lightRoles()` / `setLightRoles(roles)` | Read and persist the role map in app settings |
 | `getLightsByZone()` | Rooms with their own lights and roles, for the settings page |
-| `parseHexToHSL(hex)` | `#RRGGBB` → `[h, s, l]`, each normalised to 0–1 and rounded to 3 decimals |
+| `parseHexToHSV(hex)` | `#RRGGBB` → `[h, s, v]`, each normalised to 0–1 and rounded to 3 decimals; throws on anything that is not a `#RRGGBB` string |
+| `applyBrightness(room, brightness, options, tint)` | Shared body of the set-cards: `0` means off, otherwise `onoff` then `dim` then the caller's colour write |
+| `eachLight(lights, run)` | Runs a command against every light, tolerating individual failures; throws only if all of them failed |
 | `setLightsBrightness(room, brightness, temperature)` | Backs the `setroomlights` card |
 | `setRoomLightsColors(room, brightness, color)` | Backs the `setroomlightscolors` card; converts the hex then delegates to `setLightsColors` |
 | `setLightsColors(room, brightness, hue, saturation)` | Writes `dim` / `light_hue` / `light_saturation` per device |
@@ -151,7 +153,9 @@ Key methods:
 | `saveRoomLights(room)` / `restoreRoomLights(room)` | Persist and replay a per-room snapshot in the `lightSnapshots` setting |
 | `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given |
 
-The map is a snapshot, so the app subscribes to Homey's realtime `device.create` / `device.delete` / `device.update` and `zone.create` / `zone.delete` / `zone.update` events and rebuilds when any of them fire. Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events — pairing several devices, or a dimming light emitting `device.update` — collapses into one rebuild.
+The map is a snapshot, so the app subscribes to Homey's realtime `device.create` / `device.delete` / `device.update` and `zone.create` / `zone.delete` / `zone.update` events and rebuilds when any of them fire. A `device.update` only counts when the device's zone, class or name actually changed — everything else about a device leaves the map identical — and a payload too partial to tell rebuilds anyway.
+
+Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events collapses into one. The first event of a burst also opens a 30 s deadline (`REBUILD_MAX_WAIT_MS`): a trailing debounce on its own starves, because events arriving faster than the debounce would defer the rebuild forever.
 
 ## Repository layout
 
@@ -162,9 +166,11 @@ settings/index.html         the role editor shown in the Homey app
 app.json                    GENERATED — do not edit by hand
 .homeycompose/
   app.json                  app manifest source, including the api routes
-  flow/actions/*.json       one file per Flow card
+  flow/actions/*.json       one file per action card
+  flow/conditions/*.json    one file per condition card
 test/app.test.js            node --test suite for the pure logic
-locales/en.json             translation strings (empty — all copy is inline in .homeycompose)
+locales/en.json             settings-page copy (Flow card copy is inline in .homeycompose)
+locales/fr.json             the same, in French
 assets/
   icon.svg                  app icon
   images/                   store images + Makefile that generates them

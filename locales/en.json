@@ -1,1 +1,12 @@
-{}
+{
+  "settings": {
+    "title": "Light roles",
+    "intro": "Every light is main unless you say otherwise. Flow cards can target main or ambient lights separately. Excluded lights are never touched by any card, whatever it targets.",
+    "ambient": "Ambient",
+    "excluded": "Excluded — never touched",
+    "none": "None",
+    "add": "Add a light…",
+    "noneLeft": "No main lights left",
+    "backToMain": "Back to main"
+  }
+}

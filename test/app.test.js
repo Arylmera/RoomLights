@@ -38,13 +38,32 @@ function fakeApp({ zones, devices, roles }) {
 
 const light = (id, zone) => ({ id, zone, class: "light", capabilities: ["onoff", "dim"] });
 
-test("parseHexToHSL converts the corners of the colour space", () => {
+test("parseHexToHSV converts the corners of the colour space", () => {
   const app = new RoomLights();
-  assert.deepStrictEqual(app.parseHexToHSL("#000000"), [0, 0, 0]);
-  assert.deepStrictEqual(app.parseHexToHSL("#ffffff"), [0, 0, 1]);
-  assert.deepStrictEqual(app.parseHexToHSL("#ff0000"), [0, 1, 0.5]);
-  assert.deepStrictEqual(app.parseHexToHSL("#00ff00"), [0.333, 1, 0.5]);
-  assert.deepStrictEqual(app.parseHexToHSL("#0000ff"), [0.667, 1, 0.5]);
+  assert.deepStrictEqual(app.parseHexToHSV("#000000"), [0, 0, 0]);
+  assert.deepStrictEqual(app.parseHexToHSV("#ffffff"), [0, 0, 1]);
+  assert.deepStrictEqual(app.parseHexToHSV("#ff0000"), [0, 1, 1]);
+  assert.deepStrictEqual(app.parseHexToHSV("#00ff00"), [0.333, 1, 1]);
+  assert.deepStrictEqual(app.parseHexToHSV("#0000ff"), [0.667, 1, 1]);
+});
+
+// The bug this replaced: HSL saturation is 1.0 for any pale colour, so every
+// pastel the colour picker offered arrived at the bulb fully saturated.
+test("a pastel keeps its saturation instead of arriving as pure red", () => {
+  const app = new RoomLights();
+  assert.deepStrictEqual(app.parseHexToHSV("#ffc0c0"), [0, 0.247, 1]);
+});
+
+test("a muted colour keeps its saturation", () => {
+  const app = new RoomLights();
+  assert.deepStrictEqual(app.parseHexToHSV("#804040"), [0, 0.5, 0.502]);
+});
+
+test("a malformed colour is refused instead of writing NaN to a bulb", () => {
+  const app = new RoomLights();
+  for (const bad of [null, undefined, "", "#fff", "red", "#gggggg", "#ff00ff00", 16711680]) {
+    assert.throws(() => app.parseHexToHSV(bad), /not a colour/i, "accepted " + String(bad));
+  }
 });
 
 test("zones prefixed with _ are hidden from the room picker", async () => {
@@ -145,6 +164,9 @@ test("a failed event subscription still leaves the Flow cards registered", async
     registerArgumentAutocompleteListener: () => card,
   };
   app.homey = {
+    // Keep the settings manager from fakeApp: onInit builds the zone map, which
+    // prunes snapshots, and the real homey always has settings.
+    settings: app.homey.settings,
     flow: {
       getActionCard: (id) => {
         registered.push(id);
@@ -172,6 +194,110 @@ test("a failed event subscription still leaves the Flow cards registered", async
     "saveroomlights",
     "restoreroomlights",
   ]);
+});
+
+// The rebuild is the only house-wide read that happens without a card running,
+// so both what triggers it and when it fires have to be pinned down.
+async function watchApp() {
+  const timers = [];
+  const handlers = {};
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: { id: 1, zone: "a", class: "light", name: "spot", capabilities: ["onoff"] } },
+  });
+  app.homey.setTimeout = (fn, ms) => {
+    const timer = { fn, ms };
+    timers.push(timer);
+    return timer;
+  };
+  app.homey.clearTimeout = () => {};
+  app.homeyApi.devices.connect = async () => {};
+  app.homeyApi.zones.connect = async () => {};
+  app.homeyApi.devices.on = (event, handler) => {
+    handlers[event] = handler;
+  };
+  app.homeyApi.zones.on = (event, handler) => {
+    handlers[event] = handler;
+  };
+  await app.buildRoomLightsZones();
+  await app.watchForChanges();
+  return { app, timers, handlers };
+}
+
+test("a capability change on a known device does not trigger a rebuild", async () => {
+  const { timers, handlers } = await watchApp();
+  // What a dimming light or a power meter emits, several times a second.
+  handlers["device.update"]({ id: 1, zone: "a", class: "light", name: "spot" });
+  handlers["device.update"]({ id: 1, zone: "a", class: "light", name: "spot" });
+  assert.deepStrictEqual(timers, [], "a fading light must not schedule a house-wide read");
+});
+
+test("moving, renaming or reclassing a device does trigger a rebuild", async () => {
+  const moved = { id: 1, zone: "b", class: "light", name: "spot" };
+  const renamed = { id: 1, zone: "a", class: "light", name: "ceiling" };
+  const reclassed = { id: 1, zone: "a", class: "socket", name: "spot" };
+  const added = { id: 2, zone: "a", class: "light", name: "strip" };
+  for (const device of [moved, renamed, reclassed, added]) {
+    const { timers, handlers } = await watchApp();
+    handlers["device.update"](device);
+    assert.strictEqual(timers.length, 1, JSON.stringify(device) + " must schedule a rebuild");
+  }
+});
+
+test("an unrecognisable event payload rebuilds rather than risk going stale", async () => {
+  // homey-api forwards the raw server payload when the device is not in its
+  // own cache, so a partial one must never be read as "nothing changed".
+  const partials = [undefined, null, {}, { id: 1 }, { id: 1, class: "light" }, { id: 1, zone: "a" }];
+  for (const payload of partials) {
+    const { timers, handlers } = await watchApp();
+    handlers["device.update"](payload);
+    assert.strictEqual(timers.length, 1, JSON.stringify(payload) + " must schedule a rebuild");
+  }
+});
+
+test("creating or deleting a device or zone always rebuilds", async () => {
+  for (const event of ["device.create", "device.delete"]) {
+    const { timers, handlers } = await watchApp();
+    handlers[event]({ id: 9 });
+    assert.strictEqual(timers.length, 1, event + " must schedule a rebuild");
+  }
+  for (const event of ["zone.create", "zone.delete", "zone.update"]) {
+    const { timers, handlers } = await watchApp();
+    handlers[event]({ id: "z" });
+    assert.strictEqual(timers.length, 1, event + " must schedule a rebuild");
+  }
+});
+
+test("the first event waits the full debounce and opens a deadline", async () => {
+  const { app, timers } = await watchApp();
+  app.scheduleRebuild();
+  assert.strictEqual(timers.at(-1).ms, 5000);
+  assert.ok(app.rebuildDeadline > Date.now());
+});
+
+test("a stream of events cannot defer the rebuild forever", async () => {
+  const { app, timers } = await watchApp();
+  app.scheduleRebuild();
+  const deadline = app.rebuildDeadline;
+  app.scheduleRebuild();
+  app.scheduleRebuild();
+  assert.strictEqual(app.rebuildDeadline, deadline, "later events must not push the deadline back");
+
+  // Once the deadline is closer than the debounce, the wait shrinks to meet it.
+  app.rebuildDeadline = Date.now() + 800;
+  app.scheduleRebuild();
+  assert.ok(timers.at(-1).ms <= 800 && timers.at(-1).ms > 0, "must not schedule past the deadline");
+
+  app.rebuildDeadline = Date.now() - 1;
+  app.scheduleRebuild();
+  assert.strictEqual(timers.at(-1).ms, 0, "an expired deadline rebuilds now");
+});
+
+test("the rebuild clears the deadline so the next burst gets a fresh one", async () => {
+  const { app, timers } = await watchApp();
+  app.scheduleRebuild();
+  await timers.at(-1).fn();
+  assert.strictEqual(app.rebuildDeadline, null);
 });
 
 test("argId accepts both a dropdown id string and a value object", () => {
@@ -290,7 +416,10 @@ function recordingApp(capabilities, roles) {
     class: "light",
     name: "spot",
     capabilities,
-    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+    // homey-api takes the fade as a third `opts` argument. Record it only when
+    // there is one, so the plain writes stay two-element.
+    setCapabilityValue: async (cap, value, opts) =>
+      calls.push(opts === undefined ? [cap, value] : [cap, value, opts]),
   };
   const app = fakeApp({
     zones: { a: { id: "a", name: "Salon", parent: null } },
@@ -330,15 +459,68 @@ test("turnOffRoomLights leaves excluded lights alone", async () => {
   assert.deepStrictEqual(calls, []);
 });
 
+// A dead bulb is the normal state of a Zigbee/Z-Wave room, not an exception.
+// The card must still reach every other light and must not fail the Flow.
+function flakyApp(deadIds) {
+  const calls = [];
+  const bulb = (id) => ({
+    id,
+    zone: "a",
+    class: "light",
+    name: "spot " + id,
+    capabilities: ["onoff", "dim"],
+    setCapabilityValue: async (cap, value) => {
+      if (deadIds.includes(id)) throw new Error("device " + id + " unreachable");
+      calls.push([id, cap, value]);
+    },
+  });
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb(1), 2: bulb(2) },
+  });
+  const errors = [];
+  app.error = (...args) => errors.push(args);
+  return { app, calls, errors };
+}
+
+test("one unreachable bulb does not stop the others or fail the card", async () => {
+  const { app, calls, errors } = flakyApp([1]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, null);
+  assert.deepStrictEqual(calls, [[2, "onoff", true], [2, "dim", 0.4]]);
+  assert.strictEqual(errors.length, 1, "the unreachable light must be logged, not swallowed");
+});
+
+test("the card fails only when every light is unreachable", async () => {
+  const { app, calls } = flakyApp([1, 2]);
+  await app.buildRoomLightsZones();
+  await assert.rejects(() => app.setLightsBrightness({ id: "a" }, 0.4, null), /unreachable/);
+  assert.deepStrictEqual(calls, []);
+});
+
+test("turning off tolerates one unreachable bulb", async () => {
+  const { app, calls } = flakyApp([1]);
+  await app.buildRoomLightsZones();
+  await app.turnOffRoomLights({ id: "a" }, "all");
+  assert.deepStrictEqual(calls, [[2, "onoff", false]]);
+});
+
+test("a room with no lights at all is not an error", async () => {
+  const { app } = flakyApp([]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "nowhere" }, 0.4, null);
+});
+
 test("a duration turns the dim write into a fade", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
   await app.setLightsBrightness({ id: "a" }, 0.4, 0.5, { duration: 3000 });
   // onoff stays instant — fading onoff is device-dependent; the dim carries
-  // the duration through the object form of setCapabilityValue.
+  // the duration. It must be nested under opts: homey-api reads the fade from
+  // opts.duration and silently drops a duration passed beside the value.
   assert.deepStrictEqual(calls, [
     ["onoff", true],
-    [{ capabilityId: "dim", value: 0.4, duration: 3000 }, undefined],
+    ["dim", 0.4, { duration: 3000 }],
   ]);
 });
 
@@ -346,8 +528,29 @@ test("brightness 0 with a duration fades to off", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
   await app.setLightsBrightness({ id: "a" }, 0, 0.5, { duration: 3000 });
+  assert.deepStrictEqual(calls, [["onoff", false, { duration: 3000 }]]);
+});
+
+test("a fade carries the temperature with it instead of snapping", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim", "light_temperature"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.7, { duration: 3000 });
   assert.deepStrictEqual(calls, [
-    [{ capabilityId: "onoff", value: false, duration: 3000 }, undefined],
+    ["onoff", true],
+    ["dim", 0.4, { duration: 3000 }],
+    ["light_temperature", 0.7, { duration: 3000 }],
+  ]);
+});
+
+test("a fade carries the colour with it instead of snapping", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim", "light_hue", "light_saturation"]);
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsColors({ id: "a" }, 0.6, "#00ff00", { duration: 2000 });
+  assert.deepStrictEqual(calls, [
+    ["onoff", true],
+    ["dim", 0.6, { duration: 2000 }],
+    ["light_hue", 0.333, { duration: 2000 }],
+    ["light_saturation", 1, { duration: 2000 }],
   ]);
 });
 
@@ -449,6 +652,133 @@ test("toggle turns the lights on at the given brightness, without touching tempe
   assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.6]]);
 });
 
+// Reading devices is a full house dump over the local API. These tests pin the
+// number of reads, because the cost is invisible from the outside.
+function countingApp(onoffValue) {
+  let reads = 0;
+  const calls = [];
+  const bulb = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff", "dim"],
+    setCapabilityValue: async (cap, value) => calls.push([cap, value]),
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+  });
+  const state = { 1: { ...bulb, capabilitiesObj: { onoff: { value: onoffValue } } } };
+  app.homeyApi.devices.getDevices = async () => {
+    reads += 1;
+    return state;
+  };
+  return { app, calls, reads: () => reads };
+}
+
+test("a burst of cards shares one device read", async () => {
+  const { app, reads } = countingApp(true);
+  await app.buildRoomLightsZones();
+  const before = reads();
+  await app.anyLightsOn({ id: "a" }, "all");
+  await app.anyLightsOn({ id: "a" }, "all");
+  await app.anyLightsOn({ id: "a" }, "all");
+  assert.strictEqual(reads() - before, 1, "a held wall button must not dump the house once per repeat");
+});
+
+test("concurrent reads are deduped onto a single request", async () => {
+  const { app, reads } = countingApp(true);
+  await app.buildRoomLightsZones();
+  const before = reads();
+  await Promise.all([app.anyLightsOn({ id: "a" }, "all"), app.anyLightsOn({ id: "a" }, "all")]);
+  assert.strictEqual(reads() - before, 1);
+});
+
+test("our own write drops the cache so the next read is fresh", async () => {
+  const { app, reads } = countingApp(true);
+  await app.buildRoomLightsZones();
+  const before = reads();
+  await app.anyLightsOn({ id: "a" }, "all");
+  await app.turnOffRoomLights({ id: "a" }, "all");
+  await app.anyLightsOn({ id: "a" }, "all");
+  assert.strictEqual(reads() - before, 2, "a card must never be answered from state it just invalidated");
+});
+
+// While the realtime subscription is down — which this app tolerates — a device
+// read is a real round-trip, so a write can complete while one is in flight.
+// That read carries pre-write state and must not survive the write.
+function racyApp() {
+  const truth = { on: true, hold: null };
+  const bulb = {
+    id: 1,
+    zone: "a",
+    class: "light",
+    name: "spot",
+    capabilities: ["onoff", "dim"],
+    setCapabilityValue: async (cap, value) => {
+      if (cap === "onoff") truth.on = value;
+    },
+  };
+  const app = fakeApp({
+    zones: { a: { id: "a", name: "Salon", parent: null } },
+    devices: { 1: bulb },
+  });
+  app.homeyApi.devices.getDevices = () => {
+    // Snapshot what is true at call time; deliver it whenever the test allows.
+    const snapshot = { 1: { ...bulb, capabilitiesObj: { onoff: { value: truth.on } } } };
+    return truth.hold == null ? Promise.resolve(snapshot) : truth.hold.then(() => snapshot);
+  };
+  return { app, truth };
+}
+
+test("a read started before our write is never served to a card that ran after it", async () => {
+  const { app, truth } = racyApp();
+  await app.buildRoomLightsZones();
+
+  let land;
+  truth.hold = new Promise((resolve) => {
+    land = resolve;
+  });
+  const early = app.anyLightsOn({ id: "a" }, "all"); // captures on: true, then waits
+  truth.hold = null;
+
+  await app.turnOffRoomLights({ id: "a" }, "all"); // the room is off now
+  land();
+  assert.strictEqual(await early, true, "the early read legitimately saw the pre-write state");
+
+  assert.strictEqual(
+    await app.anyLightsOn({ id: "a" }, "all"),
+    false,
+    "a read that predates the write must not be reused, nor land in the cache, after it"
+  );
+});
+
+test("a rejected read is retried rather than joined forever", async () => {
+  const { app } = racyApp();
+  await app.buildRoomLightsZones();
+
+  let fail = true;
+  app.homeyApi.devices.getDevices = async () => {
+    if (fail) throw new Error("no route to host");
+    return { 1: { id: 1, capabilitiesObj: { onoff: { value: true } } } };
+  };
+  await assert.rejects(() => app.anyLightsOn({ id: "a" }, "all"), /no route/);
+
+  fail = false;
+  assert.strictEqual(await app.anyLightsOn({ id: "a" }, "all"), true, "must retry, not replay the rejection");
+});
+
+test("a rebuild drops the cache", async () => {
+  const { app, reads } = countingApp(true);
+  await app.buildRoomLightsZones();
+  await app.anyLightsOn({ id: "a" }, "all");
+  const before = reads();
+  await app.buildRoomLightsZones();
+  await app.anyLightsOn({ id: "a" }, "all");
+  assert.strictEqual(reads() - before, 2, "the rebuild read, then a fresh read for the card");
+});
+
 function snapshotApp() {
   const calls = [];
   const caps = ["onoff", "dim", "light_hue", "light_saturation"];
@@ -487,11 +817,36 @@ test("restore replays the saved state of every light", async () => {
   ].sort());
 });
 
-test("restore without a snapshot is a no-op", async () => {
+test("restore without a snapshot fails the card instead of doing nothing", async () => {
   const { app, calls } = snapshotApp();
   await app.buildRoomLightsZones();
-  await app.restoreRoomLights({ id: "a" });
+  await assert.rejects(() => app.restoreRoomLights({ id: "a" }), /save card/);
   assert.deepStrictEqual(calls, []);
+});
+
+test("a deleted room takes its snapshot with it", async () => {
+  const { app } = snapshotApp();
+  await app.buildRoomLightsZones();
+  await app.saveRoomLights({ id: "a" });
+  app.homey.settings.set("lightSnapshots", {
+    ...app.homey.settings.get("lightSnapshots"),
+    gone: { 7: { onoff: true } },
+  });
+
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(Object.keys(app.homey.settings.get("lightSnapshots")), ["a"]);
+});
+
+test("a failed zone read never wipes the snapshots", async () => {
+  const { app } = snapshotApp();
+  await app.buildRoomLightsZones();
+  await app.saveRoomLights({ id: "a" });
+
+  // Homey answers with no zones at all. That is a broken read, not an empty
+  // house, and it must not be treated as "every room was deleted".
+  app.homeyApi.zones.getZones = async () => ({});
+  await app.buildRoomLightsZones();
+  assert.deepStrictEqual(Object.keys(app.homey.settings.get("lightSnapshots")), ["a"]);
 });
 
 test("a light removed after the save is skipped on restore", async () => {

@@ -205,8 +205,8 @@
           "fr": "Rétablir les lumières de la pièce"
         },
         "hint": {
-          "en": "Puts every light of the room back to the state remembered by the save card. Does nothing when no snapshot exists.",
-          "fr": "Remet chaque lumière de la pièce dans l'état mémorisé par la carte de mémorisation. Ne fait rien sans mémorisation."
+          "en": "Puts every light of the room back to the state remembered by the save card. Fails if the room has never been saved.",
+          "fr": "Remet chaque lumière de la pièce dans l'état mémorisé par la carte de mémorisation. Échoue si la pièce n'a jamais été mémorisée."
         },
         "titleFormatted": {
           "en": "Restore the lights of [[room]]",

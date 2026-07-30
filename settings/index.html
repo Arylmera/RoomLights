@@ -4,18 +4,44 @@
     <meta charset="utf-8" />
     <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
     <style>
+      /* The page inherits the viewer's theme. The English text left in the
+         markup is the fallback if a translation is missing. */
+      :root {
+        --fg: #111;
+        --muted: #666;
+        --faint: #888;
+        --empty: #aaa;
+        --line: #ddd;
+        --line-soft: #f0f0f0;
+        --field-bg: #fff;
+        --field-fg: #111;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #f2f2f2;
+          --muted: #a9a9a9;
+          --faint: #909090;
+          --empty: #777;
+          --line: #3d3d3d;
+          --line-soft: #2c2c2c;
+          --field-bg: #2a2a2a;
+          --field-fg: #f2f2f2;
+        }
+      }
       body {
         font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
         margin: 0;
         padding: 16px;
         font-size: 14px;
+        color: var(--fg);
+        background: transparent;
       }
       h1 {
         font-size: 18px;
         margin: 0 0 4px;
       }
       p.intro {
-        color: #666;
+        color: var(--muted);
         margin: 0 0 20px;
         line-height: 1.4;
       }
@@ -24,7 +50,7 @@
         margin: 20px 0 4px;
       }
       .zone {
-        border-top: 1px solid #ddd;
+        border-top: 1px solid var(--line);
         padding-top: 4px;
       }
       .role {
@@ -32,7 +58,7 @@
       }
       .role h3 {
         font-size: 11px;
-        color: #888;
+        color: var(--faint);
         margin: 10px 0 4px;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -44,7 +70,7 @@
       }
       td {
         padding: 6px 0;
-        border-bottom: 1px solid #f0f0f0;
+        border-bottom: 1px solid var(--line-soft);
       }
       td.trash {
         width: 32px;
@@ -56,31 +82,35 @@
         cursor: pointer;
         font-size: 15px;
         padding: 0;
+        color: inherit;
       }
       select {
         width: 100%;
         padding: 6px;
+        color: var(--field-fg);
+        background: var(--field-bg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
       }
       .empty {
-        color: #aaa;
+        color: var(--empty);
         font-style: italic;
         padding: 4px 0 6px;
       }
     </style>
   </head>
   <body>
-    <h1>Light roles</h1>
-    <p class="intro">
-      Every light is <strong>main</strong> unless you say otherwise. Flow cards can target main or
-      ambient lights separately. <strong>Excluded</strong> lights are never touched by any card,
-      whatever it targets.
+    <h1 data-i18n="settings.title">Light roles</h1>
+    <p class="intro" data-i18n="settings.intro">
+      Every light is main unless you say otherwise. Flow cards can target main or ambient lights
+      separately. Excluded lights are never touched by any card, whatever it targets.
     </p>
     <div id="zones"></div>
 
     <script type="text/javascript">
       var ROLES = [
-        { id: "ambient", label: "Ambient" },
-        { id: "excluded", label: "Excluded — never touched" },
+        { id: "ambient", label: "settings.ambient" },
+        { id: "excluded", label: "settings.excluded" },
       ];
       var zones = [];
       var roles = {};
@@ -133,7 +163,7 @@
         block.className = "role";
 
         var heading = document.createElement("h3");
-        heading.textContent = role.label;
+        heading.textContent = Homey.__(role.label);
         block.appendChild(heading);
 
         var assigned = zone.lights.filter(function (light) {
@@ -143,7 +173,7 @@
         if (assigned.length === 0) {
           var empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = "None";
+          empty.textContent = Homey.__("settings.none");
           block.appendChild(empty);
         } else {
           var table = document.createElement("table");
@@ -154,7 +184,7 @@
             cell.className = "trash";
             var button = document.createElement("button");
             button.className = "trash";
-            button.title = "Back to main";
+            button.title = Homey.__("settings.backToMain");
             button.textContent = "🗑";
             button.onclick = function () {
               delete roles[light.id];
@@ -172,7 +202,8 @@
 
         var select = document.createElement("select");
         var placeholder = document.createElement("option");
-        placeholder.textContent = available.length === 0 ? "No main lights left" : "Add a light…";
+        placeholder.textContent =
+          available.length === 0 ? Homey.__("settings.noneLeft") : Homey.__("settings.add");
         placeholder.value = "";
         select.appendChild(placeholder);
         available.forEach(function (light) {
