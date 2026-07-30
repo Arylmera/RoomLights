@@ -4,29 +4,21 @@
     <meta charset="utf-8" />
     <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
     <style>
-      /* The page inherits the viewer's theme. The English text left in the
-         markup is the fallback if a translation is missing. */
+      /* Colours come from Homey's own variables, which follow the theme chosen
+         in the app. prefers-color-scheme reports the operating system instead,
+         and the two disagree often enough to make the page unreadable. The
+         literals are only there for a Homey too old to define the variables.
+         The English text left in the markup is the fallback if a translation
+         is missing. */
       :root {
-        --fg: #111;
-        --muted: #666;
-        --faint: #888;
-        --empty: #aaa;
-        --line: #ddd;
-        --line-soft: #f0f0f0;
-        --field-bg: #fff;
-        --field-fg: #111;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #f2f2f2;
-          --muted: #a9a9a9;
-          --faint: #909090;
-          --empty: #777;
-          --line: #3d3d3d;
-          --line-soft: #2c2c2c;
-          --field-bg: #2a2a2a;
-          --field-fg: #f2f2f2;
-        }
+        --fg: var(--homey-text-color, #111);
+        --muted: var(--homey-text-color-light, #666);
+        --faint: var(--homey-text-color-light, #888);
+        --empty: var(--homey-text-color-light, #aaa);
+        --line: var(--homey-color-mono-200, #ddd);
+        --line-soft: var(--homey-color-mono-100, #f0f0f0);
+        --field-bg: var(--homey-background-color, #fff);
+        --field-fg: var(--homey-text-color, #111);
       }
       body {
         font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -121,8 +113,8 @@
     </style>
   </head>
   <body>
-    <h1 data-i18n="settings.title">Light roles</h1>
-    <p class="intro" data-i18n="settings.intro">
+    <h1 class="homey-title" data-i18n="settings.title">Light roles</h1>
+    <p class="homey-subtitle intro" data-i18n="settings.intro">
       Every light is main unless you say otherwise. Flow cards can target main or ambient lights
       separately. Excluded lights are never touched by any card, whatever it targets.
     </p>
@@ -130,8 +122,8 @@
 
     <hr />
 
-    <h1 data-i18n="defaults.title">Automatic brightness</h1>
-    <p class="intro" data-i18n="defaults.intro">
+    <h1 class="homey-title" data-i18n="defaults.title">Automatic brightness</h1>
+    <p class="homey-subtitle intro" data-i18n="defaults.intro">
       Point each room at the variables that already hold its brightness and temperature. The
       automatic set-card then carries no values of its own — it reads them here.
     </p>
@@ -253,6 +245,7 @@
         });
 
         var select = document.createElement("select");
+        select.className = "homey-form-select";
         var placeholder = document.createElement("option");
         placeholder.textContent =
           available.length === 0 ? Homey.__("settings.noneLeft") : Homey.__("settings.add");
@@ -330,6 +323,7 @@
       function variablePicker(Homey, room, kind) {
         var chosen = (mappings[room.id] || {})[kind] || "";
         var select = document.createElement("select");
+        select.className = "homey-form-select";
 
         var none = document.createElement("option");
         none.value = "";
