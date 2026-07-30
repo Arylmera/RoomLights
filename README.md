@@ -29,6 +29,8 @@ Every light has a role, set on the app's **settings page** in the Homey app:
 
 Only non-default roles are stored, so an app you have never configured behaves exactly as it did before roles existed. `Excluded` overrides every filter, including `All` — it is the one setting no Flow card can talk past.
 
+Roles only govern *this app's* cards. A Homey **mood** writes to the devices stored in it directly, so a mood containing an excluded light will still switch it on — and because excluded means never touched, no card of this app will switch it back off afterwards. If an excluded light keeps coming on, check the zone's moods before suspecting the role.
+
 The settings page lists each room with a dropdown of its lights; picking one adds it to that role's table, and the trash icon puts it back to main. It is available in English and French, and follows your system's light or dark theme.
 
 ## Automatic brightness
