@@ -250,7 +250,7 @@ onInit()
  └─ watchForChanges()                → rebuilds the map when zones/devices change
 ```
 
-Card registration comes before `watchForChanges()` on purpose: the cards work fine without live updates, so a failed event subscription must not leave the app with no cards at all.
+Card registration comes before `watchForChanges()` on purpose: the cards work fine without live updates, so a failed event subscription must not leave the app with no cards at all. `onUninit()` disarms every tracking room, so an app being stopped or updated does not leave capability listeners behind.
 
 Roles are read from settings on every card run rather than baked into `myHome`, so changing a role takes effect on the next run — no rebuild, no restart.
 
@@ -293,6 +293,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `setRoomLightsAuto(room, options)` | Backs the automatic card: apply the room's automatic brightness, then arm daylight tracking |
 | `applyRoomAuto(room, options)` | **async.** The mapped values, moved by daylight, written to the room. Shared by the card and by every re-evaluation, so the two cannot drift apart |
 | `daylightSettings()` / `roomDaylight(roomId)` | The room → daylight map from app settings, and one room's entry after validation (`null` when unusable). Each mode keeps only its own fields — `{ mode, source, fullLux }` or `{ mode, source, dark, bright, swing }` — so a stale anchor cannot come back later and change what a room does. An entry with no `mode` at all predates the hold mode and keeps following |
+| `weatherDeviceId()` | The globally mapped weather device id, or `null` when none is stored |
 | `geolocation()` | The house's latitude and longitude, or `null` on a Homey that cannot answer — needs the `homey:manager:geolocation` permission |
 | `capabilityReading(deviceId, capabilityId)` | **async.** A numeric capability value with the age of the reading, or `null` for any way a stored device id stops meaning anything |
 | `cloudiness()` | **async.** The cloud-cover percentage to scale the clear sky by, or `null` to drop the term (unmapped, unresolvable, capability gone, or stale) |
@@ -305,7 +306,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `turnOffRoomLights(room, role)` | Backs the turn-off card, and the off half of the toggle |
 | `anyLightsOn(room, role)` | **async.** True when any non-excluded light of the role is on — backs the condition card and the toggle |
 | `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; reaching the off threshold turns off |
-| `offBelow()` | The brightness at or below which a light is switched off rather than dimmed. The stored setting, or 5 % when it is missing or unusable |
+| `validOffBelow(value)` / `offBelow()` | The threshold check — a finite number in 0–1, or `null` — and the brightness at or below which a light is switched off rather than dimmed: the stored setting, or 5 % when it is missing or unusable |
 | `toggleRoomLights(room, role, brightness)` | All off if anything is on, otherwise on at the given brightness |
 | `saveRoomLights(room)` / `restoreRoomLights(room)` | Persist and replay a per-room snapshot in the `lightSnapshots` setting |
 | `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given. The duration goes in homey-api's third `opts` argument — passed anywhere else it is dropped without an error and the light simply snaps |
