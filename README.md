@@ -46,6 +46,17 @@ Most houses already compute their lighting somewhere — a circadian Flow, a sce
 - **Fill in from names** maps every room whose variables follow the `<Room> - Brightness` / `<Room> - Temp` convention. Matching ignores case and accents. An exact match wins, then a unique prefix match; an ambiguous one is left blank rather than guessed at, because `Hall` and `Hall d'entrée` are both rooms. Only empty slots are filled, so a choice you made by hand survives the button.
 - Deleting a room discards its mapping.
 
+### The off threshold
+
+A brightness at or below this value means **off**, for every card — not just the automatic one. It defaults to **5 %** and lives above the room table.
+
+The reason it exists: a circadian formula reaches "dark" as a small float far more often than as a clean zero. Told `0.0345`, the app used to write `onoff true` followed by `dim 0.0345`, the bulb obeyed, and the room glowed instead of going out. Insights on a live house showed the brightness variable sitting at one to three percent for a quarter of an hour at a stretch.
+
+- The comparison is inclusive, so a threshold of **0** turns lights off only at exactly zero — that is how you switch the behaviour off, and there is no separate flag.
+- It applies to a hand-dragged slider too. Setting a room to 3 % with a 5 % threshold turns it off.
+- A stored value that is missing, out of range or not a number falls back to 5 %, because a corrupted setting must never be the reason the app stops turning lights off.
+- A bulb whose own hardware minimum sits above the threshold can still glow. That needs a per-light minimum, which the app does not have.
+
 ## Flow cards
 
 Ten **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
@@ -69,7 +80,7 @@ Common arguments:
 | `room` | autocomplete | Type to filter your zones by name |
 | `role` | dropdown | `All` · `Main only` · `Ambient only` |
 | `state` | dropdown | `All lights` · `Only lights already on` — the second leaves lights that are currently off untouched, so an evening dim doesn't wake a lamp nobody switched on |
-| `brightness` | range 0–1, step 0.01 (shown as 0–100 %) | `0` turns the lights **off** instead of dimming to zero |
+| `brightness` | range 0–1, step 0.01 (shown as 0–100 %) | Anything at or below the [off threshold](#the-off-threshold) turns the lights **off** instead of dimming them to almost nothing |
 | `temperature` | range 0–1, step 0.01 | Only applied to lights that expose `light_temperature` |
 | `color` | colour picker (`#RRGGBB`) | Converted to HSV; plain white bulbs take the brightness and ignore it |
 
@@ -107,7 +118,7 @@ Two arguments, because turning a room off shouldn't need five. There is no `stat
 
 > Dim \[role] lights of \[room] \[direction] by \[step]
 
-Relative dimming for wall buttons and dial remotes. Only touches lights that are already on: dimming *up* never wakes a lamp nobody switched on. Reaching zero turns the light off; a light whose current brightness cannot be read is skipped.
+Relative dimming for wall buttons and dial remotes. Only touches lights that are already on: dimming *up* never wakes a lamp nobody switched on. Reaching the [off threshold](#the-off-threshold) turns the light off, so holding *down* arrives at darkness instead of stalling at a glow; a light whose current brightness cannot be read is skipped.
 
 ### `toggleroomlights`
 
@@ -199,7 +210,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `logicVariables()` / `variableValue(variables, id)` | **async** read of every Logic variable, shared and cached for 1 s; and the number behind one id |
 | `roomDefaults()` | The room → `{ brightness, temperature }` variable-id map from app settings |
 | `roomDefaultValues(room)` | **async.** Resolves that mapping to numbers, clamped to 0–1. Throws when the brightness variable is unmapped, gone, or not a number; a missing temperature resolves to `null` |
-| `getRoomDefaultsPage()` / `setRoomDefaults(mappings)` | **async.** Read and persist the mapping for the settings page; the save keeps only picker rooms and number variables |
+| `getRoomDefaultsPage()` / `setRoomDefaults(body)` | **async.** Read and persist `{ mappings, offBelow }` for the settings page; the save keeps only picker rooms and number variables, and drops an unusable threshold rather than storing it |
 | `parseHexToHSV(hex)` | `#RRGGBB` → `[h, s, v]`, each normalised to 0–1 and rounded to 3 decimals; throws on anything else |
 | `applyBrightness(room, brightness, options, tint)` | Shared body of the set-cards: `0` means off, otherwise `onoff` then `dim` then the caller's colour write |
 | `eachLight(lights, run)` | Runs a command against every light, tolerating individual failures; throws only if all of them failed |
@@ -207,7 +218,8 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `setRoomLightsAuto(room, options)` | Backs the automatic card: resolve the mapped values, then the ordinary `setLightsBrightness()` |
 | `turnOffRoomLights(room, role)` | Backs the turn-off card, and the off half of the toggle |
 | `anyLightsOn(room, role)` | **async.** True when any non-excluded light of the role is on — backs the condition card and the toggle |
-| `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; zero turns off |
+| `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; reaching the off threshold turns off |
+| `offBelow()` | The brightness at or below which a light is switched off rather than dimmed. The stored setting, or 5 % when it is missing or unusable |
 | `toggleRoomLights(room, role, brightness)` | All off if anything is on, otherwise on at the given brightness |
 | `saveRoomLights(room)` / `restoreRoomLights(room)` | Persist and replay a per-room snapshot in the `lightSnapshots` setting |
 | `write(device, capabilityId, value, duration)` | One capability write, as a fade when a duration (ms) is given. The duration goes in homey-api's third `opts` argument — passed anywhere else it is dropped without an error and the light simply snaps |

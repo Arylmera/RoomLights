@@ -13,6 +13,8 @@
     "title": "Automatic brightness",
     "intro": "Point each room at the variables that already hold its brightness and temperature. The automatic set-card then carries no values of its own — it reads them here.",
     "autofill": "Fill in from names",
+    "offbelow": "Turn lights off below",
+    "offbelowhint": "A brightness this low means off, for every card — not just the automatic one. A circadian variable rarely lands on an exact zero, and a bulb held at 3% is a glow nobody asked for. Set it to 0 to turn lights off only at exactly zero.",
     "brightness": "Brightness",
     "temperature": "Temperature",
     "unset": "Not mapped"

@@ -13,6 +13,8 @@
     "title": "Luminosité automatique",
     "intro": "Associez chaque pièce aux variables qui contiennent déjà sa luminosité et sa température. La carte de réglage automatique ne contient alors plus aucune valeur : elle les lit ici.",
     "autofill": "Remplir d'après les noms",
+    "offbelow": "Éteindre en dessous de",
+    "offbelowhint": "Une luminosité aussi faible signifie éteint, pour toutes les cartes — pas seulement la carte automatique. Une variable circadienne tombe rarement sur un zéro exact, et une ampoule maintenue à 3 % n'éclaire rien : elle rougeoie. Mettez 0 pour n'éteindre qu'à zéro exact.",
     "brightness": "Luminosité",
     "temperature": "Température",
     "unset": "Non associée"

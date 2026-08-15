@@ -16,9 +16,9 @@ Module._load = (request, ...rest) => {
 const RoomLights = require("../app.js");
 Module._load = load;
 
-function fakeApp({ zones, devices, roles, variables, defaults }) {
+function fakeApp({ zones, devices, roles, variables, defaults, offBelow }) {
   const app = new RoomLights();
-  const stored = { lightRoles: roles || {}, roomDefaults: defaults || {} };
+  const stored = { lightRoles: roles || {}, roomDefaults: defaults || {}, offBelow };
   app.homey = {
     settings: {
       get: (key) => stored[key],
@@ -410,7 +410,7 @@ test("anyLightsOn ignores excluded lights even when they are on", async () => {
   assert.strictEqual(await app.anyLightsOn({ id: "a" }, "all"), false);
 });
 
-function recordingApp(capabilities, roles) {
+function recordingApp(capabilities, roles, offBelow) {
   const calls = [];
   const bulb = {
     id: 1,
@@ -427,6 +427,7 @@ function recordingApp(capabilities, roles) {
     zones: { a: { id: "a", name: "Salon", parent: null } },
     devices: { 1: bulb },
     roles,
+    offBelow,
   });
   return { app, calls, bulb };
 }
@@ -445,6 +446,47 @@ test("brightness 0 turns off and never writes onoff true", async () => {
   await app.buildRoomLightsZones();
   await app.setLightsBrightness({ id: "a" }, 0, 0.5);
   assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+// A circadian formula reaches "dark" as a small float, not as an exact 0, so
+// an equality check let 1-3% through and the room glowed instead of going out.
+test("a brightness below the threshold turns off instead of glowing", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.0345, 0.5);
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+test("a brightness above the threshold is still applied normally", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"]);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.06, null);
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.06]]);
+});
+
+test("the threshold is inclusive, so a brightness exactly on it means off", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"], null, 0.1);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.1, null);
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+// The inclusive comparison is what makes 0 a working "disable": there is no
+// separate flag, and the app behaves exactly as it did before the threshold.
+test("a threshold of 0 turns lights off only at exactly zero", async () => {
+  const { app, calls } = recordingApp(["onoff", "dim"], null, 0);
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.01, null);
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.01]]);
+});
+
+// A corrupted setting must never be the reason the app stops turning lights
+// off, so it falls back to the default rather than to 0.
+test("an unusable stored threshold falls back to the default", async () => {
+  for (const broken of [null, undefined, "0.05", NaN, Infinity, -0.1, 1.5]) {
+    const { app } = recordingApp(["onoff", "dim"], null, broken);
+    assert.strictEqual(app.offBelow(), 0.05, `${String(broken)} should not be trusted`);
+  }
 });
 
 test("turnOffRoomLights switches off every light of the role", async () => {
@@ -574,7 +616,7 @@ test("a null temperature is simply not written", async () => {
 // from the same getDevices() call, never from the myHome snapshot. The fresh
 // objects spread the recording bulb because buildRoomLightsZones() reads them
 // too — a stub without setCapabilityValue would make every write throw.
-function dimApp(capabilitiesObj) {
+function dimApp(capabilitiesObj, offBelow) {
   const calls = [];
   const bulb = {
     id: 1,
@@ -587,6 +629,7 @@ function dimApp(capabilitiesObj) {
   const app = fakeApp({
     zones: { a: { id: "a", name: "Salon", parent: null } },
     devices: { 1: bulb },
+    offBelow,
   });
   app.homeyApi.devices.getDevices = async () => ({ 1: { ...bulb, capabilitiesObj } });
   return { app, calls };
@@ -603,6 +646,15 @@ test("dim down to zero turns the light off instead of dim 0", async () => {
   const { app, calls } = dimApp({ onoff: { value: true }, dim: { value: 0.1 } });
   await app.buildRoomLightsZones();
   await app.dimRoomLights({ id: "a" }, "all", "down", 0.2);
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+// Without the threshold here, holding "down" on a wall button stalls at a glow
+// instead of arriving at off.
+test("dimming down into the threshold turns the light off", async () => {
+  const { app, calls } = dimApp({ onoff: { value: true }, dim: { value: 0.08 } });
+  await app.buildRoomLightsZones();
+  await app.dimRoomLights({ id: "a" }, "all", "down", 0.05);
   assert.deepStrictEqual(calls, [["onoff", false]]);
 });
 
@@ -1070,17 +1122,37 @@ test("setRoomDefaults keeps only known rooms and number variables", async () => 
   const { app } = autoApp(salonVariables(), {});
   await app.buildRoomLightsZones();
   const saved = await app.setRoomDefaults({
-    salon: { brightness: "b", temperature: "s" }, // scene is text, not a temperature
-    nowhere: { brightness: "b" },
+    mappings: {
+      salon: { brightness: "b", temperature: "s" }, // scene is text, not a temperature
+      nowhere: { brightness: "b" },
+    },
   });
-  assert.deepStrictEqual(saved, { salon: { brightness: "b" } });
+  assert.deepStrictEqual(saved.mappings, { salon: { brightness: "b" } });
   assert.deepStrictEqual(app.roomDefaults(), { salon: { brightness: "b" } });
 });
 
 test("a room mapped to a temperature but no brightness is not stored", async () => {
   const { app } = autoApp(salonVariables(), {});
   await app.buildRoomLightsZones();
-  assert.deepStrictEqual(await app.setRoomDefaults({ salon: { temperature: "t" } }), {});
+  const saved = await app.setRoomDefaults({ mappings: { salon: { temperature: "t" } } });
+  assert.deepStrictEqual(saved.mappings, {});
+});
+
+test("the threshold rides along on the same save as the mappings", async () => {
+  const { app } = autoApp(salonVariables(), {});
+  await app.buildRoomLightsZones();
+  await app.setRoomDefaults({ mappings: {}, offBelow: 0.2 });
+  assert.strictEqual(app.offBelow(), 0.2);
+
+  const saved = await app.setRoomDefaults({ mappings: {}, offBelow: "loads" });
+  assert.strictEqual(app.offBelow(), 0.2, "a bad save must leave the good value alone");
+  assert.strictEqual(saved.offBelow, 0.2, "the page is told what was actually kept");
+});
+
+test("the settings page is told the current threshold", async () => {
+  const { app } = autoApp(salonVariables(), salonMapping);
+  await app.buildRoomLightsZones();
+  assert.strictEqual((await app.getRoomDefaultsPage()).offBelow, 0.05);
 });
 
 test("a deleted room takes its mapping with it, a failed zone read does not", async () => {

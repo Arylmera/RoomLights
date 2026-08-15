@@ -31,6 +31,14 @@ const VARIABLE_CACHE_MS = 1000;
 const DEFAULT_ROLE = "main";
 const ROLE_EXCLUDED = "excluded";
 
+// Brightness at or below this means off, not "on at a hair above nothing".
+// Treating only an exact 0 as off is a strict equality against a number that
+// usually comes out of a circadian formula, and such a formula reaches "dark"
+// as a small float far more often than as a clean zero — a room asked for
+// 0.0345 was coming on at 3% and glowing. Overridable in the app settings,
+// where 0 restores the old exact-zero behaviour.
+const DEFAULT_OFF_BELOW = 0.05;
+
 // What a snapshot remembers besides onoff, and the order it is replayed in.
 const SNAPSHOT_CAPABILITIES = ["dim", "light_temperature", "light_hue", "light_saturation"];
 
@@ -267,6 +275,22 @@ class RoomLights extends Homey.App {
     return this.homey.settings.get("lightRoles") || {};
   }
 
+  // A usable fraction of full brightness, or null. Shared by the reader and the
+  // writer so the two can never disagree about what a valid threshold is.
+  validOffBelow(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+      return null;
+    }
+    return value;
+  }
+
+  // A corrupted setting must never be the reason the app stops turning lights
+  // off, so anything unusable falls back to the default rather than to 0.
+  offBelow() {
+    const stored = this.validOffBelow(this.homey.settings.get("offBelow"));
+    return stored == null ? DEFAULT_OFF_BELOW : stored;
+  }
+
   isOn(device) {
     const capabilities = device.capabilitiesObj;
     if (capabilities == null || capabilities.onoff == null) {
@@ -390,15 +414,19 @@ class RoomLights extends Homey.App {
     }
   }
 
-  // Shared body of every "set the lights" card. Brightness 0 means off; any
-  // other brightness means on at that level, with onoff written first because
-  // writing dim alone leaves a light that was off in a device-dependent state.
-  // `tint` writes whatever colour aspect the calling card carries, if any.
+  // Shared body of every "set the lights" card, and the only place the off
+  // threshold is applied on this path — a guard per card would be a larger diff
+  // that still left the next card to be written broken. Brightness at or below
+  // the threshold means off; any brightness above it means on at that level,
+  // with onoff written first because writing dim alone leaves a light that was
+  // off in a device-dependent state. `tint` writes whatever colour aspect the
+  // calling card carries, if any.
   async applyBrightness(room, brightness, options, tint) {
     const opts = options || {};
     const lights = await this.roomLights(room, opts.role, opts.state);
+    const offBelow = this.offBelow();
     await this.eachLight(lights, async (device) => {
-      if (brightness === 0) {
+      if (brightness <= offBelow) {
         await this.write(device, "onoff", false, opts.duration);
         return;
       }
@@ -443,6 +471,9 @@ class RoomLights extends Homey.App {
     const fresh = await this.freshDevices();
     const delta = direction === "down" ? -step : step;
     const lights = await this.roomLights(room, role);
+    // The same threshold as the set-cards: without it, holding "down" stalls at
+    // a glow instead of arriving at off.
+    const offBelow = this.offBelow();
     await this.eachLight(lights, async (device) => {
       const caps = fresh[device.id] && fresh[device.id].capabilitiesObj;
       if (caps == null || caps.onoff == null || caps.onoff.value !== true) {
@@ -452,7 +483,7 @@ class RoomLights extends Homey.App {
         return;
       }
       const dim = Math.min(1, Math.max(0, caps.dim.value + delta));
-      if (dim === 0) {
+      if (dim <= offBelow) {
         await this.write(device, "onoff", false);
         return;
       }
@@ -664,20 +695,28 @@ class RoomLights extends Homey.App {
     const variables = Object.values(await this.logicVariables())
       .filter((variable) => variable.type === "number")
       .map((variable) => ({ id: variable.id, name: variable.name }));
-    return { rooms: this.zoneFilter, variables, mappings: this.roomDefaults() };
+    return {
+      rooms: this.zoneFilter,
+      variables,
+      mappings: this.roomDefaults(),
+      offBelow: this.offBelow(),
+    };
   }
 
   // The page sends the whole map back, so anything it could not see would be
   // wiped by an unrelated edit. It sees every room in the picker and every
   // number variable, which is exactly what is kept here.
-  async setRoomDefaults(mappings) {
+  //
+  // The off threshold rides along on the same save. It belongs to the same
+  // section of the page, and a scalar does not earn a route of its own.
+  async setRoomDefaults(body) {
     const variables = await this.logicVariables();
     const isNumberVariable = (id) =>
       id != null && variables[id] != null && variables[id].type === "number";
     const rooms = new Set(this.zoneFilter.map((zone) => zone.id));
 
     const valid = {};
-    const input = mappings || {};
+    const input = (body && body.mappings) || {};
     for (const roomId of Object.keys(input)) {
       if (!rooms.has(roomId)) {
         continue;
@@ -696,7 +735,15 @@ class RoomLights extends Homey.App {
     }
 
     this.homey.settings.set("roomDefaults", valid);
-    return valid;
+
+    // An unusable threshold is dropped rather than stored, so a bad save cannot
+    // leave state that offBelow() then has to paper over.
+    const threshold = this.validOffBelow(body && body.offBelow);
+    if (threshold != null) {
+      this.homey.settings.set("offBelow", threshold);
+    }
+
+    return { mappings: valid, offBelow: this.offBelow() };
   }
 
   setLightRoles(roles) {

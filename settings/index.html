@@ -147,6 +147,33 @@
       button.fill:hover {
         border-color: var(--faint);
       }
+      .threshold {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        margin-bottom: 4px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .threshold label {
+        font-weight: 600;
+      }
+      .threshold .offbelow {
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .threshold input {
+        font: inherit;
+        width: 68px;
+        text-align: right;
+        color: var(--fg);
+        background: var(--field-bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin-right: 4px;
+      }
       /* Homey opens the settings page in a dialog barely wider than a phone.
          Below that width the room / brightness / temperature columns stop
          fitting side by side, so each room becomes a block with its own
@@ -202,6 +229,16 @@
       Point each room at the variables that already hold its brightness and temperature. The
       automatic set-card then carries no values of its own — it reads them here.
     </p>
+    <div class="threshold">
+      <label for="offbelow" data-i18n="defaults.offbelow">Turn lights off below</label>
+      <span class="offbelow"><input type="number" id="offbelow" min="0" max="100" step="1" /> %</span>
+    </div>
+    <p class="homey-subtitle intro" data-i18n="defaults.offbelowhint">
+      A brightness this low means off, for every card — not just the automatic one. A circadian
+      variable rarely lands on an exact zero, and a bulb held at 3% is a glow nobody asked for. Set
+      it to 0 to turn lights off only at exactly zero.
+    </p>
+
     <button class="fill" id="autofill" data-i18n="defaults.autofill">Fill in from names</button>
     <div id="defaults"></div>
 
@@ -216,6 +253,7 @@
       var rooms = [];
       var variables = [];
       var mappings = {};
+      var offBelow = 0.05;
 
       function onHomeyReady(Homey) {
         Homey.api("GET", "/lights", null, function (err, result) {
@@ -242,6 +280,8 @@
           rooms = (result && result.rooms) || [];
           variables = (result && result.variables) || [];
           mappings = (result && result.mappings) || {};
+          if (result && typeof result.offBelow === "number") offBelow = result.offBelow;
+          renderThreshold(Homey);
           renderDefaults(Homey);
           document.getElementById("autofill").onclick = function () {
             autofill();
@@ -347,13 +387,32 @@
       // ------------------------------------------------- automatic brightness
 
       function saveDefaults(Homey) {
-        Homey.api("PUT", "/defaults", mappings, function (err, saved) {
+        var body = { mappings: mappings, offBelow: offBelow };
+        Homey.api("PUT", "/defaults", body, function (err, saved) {
           if (err) return Homey.alert(err);
           // Show what was actually kept: a room with no brightness variable is
-          // dropped, and so is a variable that has since been deleted.
-          mappings = saved || {};
+          // dropped, and so is a variable that has since been deleted. The
+          // threshold comes back too, so a rejected one snaps back rather than
+          // leaving the box showing a value the app never stored.
+          mappings = (saved && saved.mappings) || {};
+          if (saved && typeof saved.offBelow === "number") offBelow = saved.offBelow;
+          renderThreshold(Homey);
           renderDefaults(Homey);
         });
+      }
+
+      // The threshold is a whole-app rule, not a per-room one, so it gets its
+      // own row above the table rather than a fourth column inside it.
+      function renderThreshold(Homey) {
+        var input = document.getElementById("offbelow");
+        input.value = Math.round(offBelow * 100);
+        input.onchange = function () {
+          var percent = parseInt(input.value, 10);
+          // An empty or non-numeric box means "leave it alone", not "zero".
+          if (isNaN(percent)) return renderThreshold(Homey);
+          offBelow = Math.min(1, Math.max(0, percent / 100));
+          saveDefaults(Homey);
+        };
       }
 
       function renderDefaults(Homey) {
