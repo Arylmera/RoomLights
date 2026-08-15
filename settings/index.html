@@ -785,9 +785,15 @@
           select.appendChild(missing);
         }
 
+        // Changing the source changes which anchor boxes are usable at all, so
+        // this picker always redraws — unlike the boxes themselves, which must
+        // not, because typing in one saves the one before it. Redrawing here
+        // costs nothing: the choice has just been made and the select is done
+        // with focus.
         select.onchange = function () {
           if (!select.value) {
             delete daylight[room.id];
+            renderDaylight(Homey);
             return saveDefaults(Homey);
           }
           // A room's own sensor reads single lux; the outdoor model reads tens
@@ -803,6 +809,7 @@
             bright: sameKind ? entry.bright : seed.bright,
             swing: sameKind ? entry.swing : seed.swing,
           };
+          renderDaylight(Homey);
           saveDefaults(Homey);
         };
 
