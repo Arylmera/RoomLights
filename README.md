@@ -5,7 +5,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 | | |
 |---|---|
 | App ID | `inc.lemer.roomLights` |
-| Version | 1.2.0 |
+| Version | 1.4.0 |
 | Homey SDK | 3 |
 | Compatibility | Homey `>=12.9.0`, platform `local` |
 | Category | lights |
@@ -57,9 +57,42 @@ The reason it exists: a circadian formula reaches "dark" as a small float far mo
 - A stored value that is missing, out of range or not a number falls back to 5 %, because a corrupted setting must never be the reason the app stops turning lights off.
 - A bulb whose own hardware minimum sits above the threshold can still glow. That needs a per-light minimum, which the app does not have.
 
+### Daylight
+
+The third section of the page lets a room's automatic brightness follow the light it already has: brighter outside, dimmer lamps, and the other way round. Rooms left unset behave exactly as before, so this changes nothing until you configure it.
+
+Each room picks a **source**, then two lux **anchors** and a **swing**:
+
+| Field | Meaning |
+|---|---|
+| **Daylight from** | *None*, any device exposing `measure_luminance`, or *Modelled daylight* |
+| **Dark (lux)** | At or below this reading the room runs at *mapped brightness + swing* |
+| **Bright (lux)** | At or above this reading it runs at *mapped brightness − swing* |
+| **Swing (%)** | How far daylight may move the mapped brightness, either way |
+
+Between the anchors the value is interpolated on `log10(lux)`, which matches both the Zigbee illuminance encoding (`10000·log10(lux)+1`) and human brightness perception — a linear interpolation would spend almost its whole range on the top decade. At the **geometric mean** of the two anchors the mapped brightness passes through untouched, so the anchors describe the extremes and the middle stays exactly as you configured it elsewhere.
+
+Every source is listed with its current reading, because choosing anchors is the one part of this the page cannot do for you.
+
+**Sources.** A room may point at any lux device, not only one in that room — pointing several rooms at a single well-placed sensor is a perfectly good configuration, and anchors are per-room so each still gets its own curve. *Modelled daylight* is computed instead of measured, from the sun's position (Homey's own coordinates plus the NOAA solar-position algorithm) scaled by the cloud cover of a weather device you name once, globally:
+
+```
+lux ≈ 120000 · sin(solar elevation) · (1 − 0.75 · cloudiness/100)
+```
+
+The cloudiness term is dropped — leaving a clear-sky curve, never darkness — when no weather device is mapped, when the stored one no longer resolves or no longer exposes `measure_cloudiness`, or when its reading is more than three hours old. That last case is not hypothetical: the house this was built against had a weather device sit frozen for three weeks while still answering with an entirely plausible number.
+
+**Why the swing is bounded.** A sensor sitting in the room it lights sees its own lamps, which is a closed loop and the classic configuration for *hunting*: lamps brighten, the sensor reads more light, the controller dims, the sensor reads less. Clamping beyond the anchors bounds daylight's authority, which holds the loop gain below one, and a 3 % deadband keeps small corrections off the Zigbee mesh entirely. Keep the swing modest. Modelled daylight has no feedback path at all — it cannot see your lamps — so it is stable whatever you set.
+
+**Tracking.** [`setroomlightsauto`](#setroomlightsauto) on a room with a source doesn't just apply a value, it starts *tracking*: the room keeps being corrected as the light moves, on the sensor's own reporting cadence (five minutes for a Hue sensor) or on a five-minute timer for a modelled room. Tracking stops when every non-excluded light in the room is off, when [`stopdaylighttracking`](#stopdaylighttracking) runs, when the settings are saved, or when the zone map rebuilds. It is held in memory only, so restarting the app clears it and the next automatic card re-arms it.
+
+Because tracking stops once the room is dark, daylight that dims a room through the [off threshold](#the-off-threshold) turns it off and leaves it off — it will not switch itself back on at dusk. Turning a room on is a Flow's decision, never the app's.
+
+A **manual dim is transient**: the app corrects it back within one sample. Treating a hand-dialled level as a new baseline would need the app to tell its own writes from everyone else's, and it does not.
+
 ## Flow cards
 
-Ten **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
+Eleven **actions** (the *…then* column of a Flow) and one **condition** (the *…and* column).
 
 | Card | Arguments | Fade |
 |---|---|---|
@@ -70,6 +103,7 @@ Ten **actions** (the *…then* column of a Flow) and one **condition** (the *…
 | [`dimroomlights`](#dimroomlights) | room, role, direction, step | |
 | [`toggleroomlights`](#toggleroomlights) | room, role, brightness | |
 | [`saveroomlights` / `restoreroomlights`](#saveroomlights--restoreroomlights) | room | |
+| [`stopdaylighttracking`](#stopdaylighttracking) | room | |
 | [`anyroomlightson`](#anyroomlightson) *(condition)* | room, role | |
 | [`setroomlights` / `setroomlightscolors`](#deprecated-setroomlights-and-setroomlightscolors) | *deprecated* | |
 
@@ -107,6 +141,16 @@ Same as above with `color` in place of `temperature`. The hex is converted to HS
 A mapped brightness of `0` still means off, exactly as a typed `0` does. Values outside 0–1 are clamped rather than sent to a bulb.
 
 The card **fails** when the room has no brightness variable mapped, or when that variable has been deleted or no longer holds a number — the error names the room. Doing nothing there would look exactly like a broken card. A missing *temperature* is not an error: the lights take the brightness and keep the tint they had.
+
+If the room has a [daylight](#daylight) source, the mapped brightness is moved by the current light level before it is written, and the card also starts tracking — the room keeps being corrected as the daylight moves until something stops it. A room with no source is unaffected.
+
+### `stopdaylighttracking`
+
+> Stop daylight tracking in \[room]
+
+Stops correcting the room until the automatic card runs again. It writes nothing itself.
+
+This exists because `homey-api` ships **no moods manager** — there is no mood event an app can subscribe to — so a mood Flow has no way to say "leave this room alone" other than saying it. Drop this card into your mood Flows next to the mood itself, or a mood set on a tracking room is quietly overwritten a few minutes later.
 
 ### `turnoffroomlights`
 
@@ -167,7 +211,9 @@ They run independently, so the spots come up warm and dim while the TV strip goe
 
 ## Architecture
 
-Everything lives in a single [`app.js`](app.js) exporting one `Homey.App` subclass. There are no drivers — the app owns no devices of its own, it only drives existing ones.
+[`app.js`](app.js) exports one `Homey.App` subclass and holds everything that talks to Homey. There are no drivers — the app owns no devices of its own, it only drives existing ones.
+
+Beside it, [`lib/daylight.js`](lib/daylight.js) holds the arithmetic that decides how bright a room gets: solar position, modelled illuminance, the lux-to-brightness mapping, and the validation of a stored daylight entry. It imports nothing and touches no Homey API, which is the point — it is the part most worth testing, and its tests need no stub at all.
 
 ```
 onInit()
@@ -190,6 +236,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `deviceIndex` | `Map<id, "zone\|class\|name">` as of the last rebuild. Compared against on each `device.update` to decide whether the map is actually affected. It stores strings rather than device references on purpose: homey-api mutates its cached `Device` in place *before* emitting, so a retained reference would always compare equal |
 | `deviceCache` / `deviceGen` | The shared device read behind `freshDevices()`, and the generation counter that invalidates it. Anything that makes a read obsolete — one of our writes, or a rebuild — bumps the generation, so a read already in flight can neither be joined afterwards nor land in the cache |
 | `variableCache` | The same shape for `logicVariables()`, minus the generation counter: the app only ever reads Logic variables, so nothing it does can make a read stale |
+| `daylightTracking` | `Map<roomId, { room, options, lastWritten, source, instance, timer }>` — the rooms currently being corrected as their daylight moves, with the capability subscription or timer keeping each one going. In memory only: a restart clears it |
 
 ### Key methods
 
@@ -199,7 +246,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `watchForChanges()` | Subscribes to `device.*` / `zone.*` events and schedules a debounced rebuild |
 | `topologyChanged(device)` | Whether a `device.update` can actually affect the map. Anything too partial to tell counts as changed |
 | `scheduleRebuild()` | Debounces the rebuild, without letting a steady event stream defer it past the deadline |
-| `pruneByRoom(key)` | Drops entries of a room-keyed setting (`lightSnapshots`, `roomDefaults`) for rooms that no longer exist; never prunes against an empty zone map |
+| `pruneByRoom(key)` | Drops entries of a room-keyed setting (`lightSnapshots`, `roomDefaults`, `daylight`) for rooms that no longer exist; never prunes against an empty zone map |
 | `argId(value)` / `filters(args)` | Normalise a dropdown argument (object or plain string) and pull `role` + `state` off a card's arguments |
 | `roomLights(room, role, state)` | **async.** The lights of a zone after the role and state filters, or `[]` |
 | `isOn(device)` | Whether a light counts as on; unreadable state counts as on |
@@ -210,12 +257,23 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `logicVariables()` / `variableValue(variables, id)` | **async** read of every Logic variable, shared and cached for 1 s; and the number behind one id |
 | `roomDefaults()` | The room → `{ brightness, temperature }` variable-id map from app settings |
 | `roomDefaultValues(room)` | **async.** Resolves that mapping to numbers, clamped to 0–1. Throws when the brightness variable is unmapped, gone, or not a number; a missing temperature resolves to `null` |
-| `getRoomDefaultsPage()` / `setRoomDefaults(body)` | **async.** Read and persist `{ mappings, offBelow }` for the settings page; the save keeps only picker rooms and number variables, and drops an unusable threshold rather than storing it |
+| `getRoomDefaultsPage()` / `setRoomDefaults(body)` | **async.** Read and persist `{ mappings, offBelow, daylight, weather }` for the settings page; the save keeps only picker rooms and number variables, and drops an unusable threshold or daylight entry rather than storing it |
 | `parseHexToHSV(hex)` | `#RRGGBB` → `[h, s, v]`, each normalised to 0–1 and rounded to 3 decimals; throws on anything else |
 | `applyBrightness(room, brightness, options, tint)` | Shared body of the set-cards: `0` means off, otherwise `onoff` then `dim` then the caller's colour write |
 | `eachLight(lights, run)` | Runs a command against every light, tolerating individual failures; throws only if all of them failed |
 | `setLightsBrightness()` / `setLightsColors()` / `setRoomLightsColors()` | Back the brightness and colour set-cards |
-| `setRoomLightsAuto(room, options)` | Backs the automatic card: resolve the mapped values, then the ordinary `setLightsBrightness()` |
+| `setRoomLightsAuto(room, options)` | Backs the automatic card: apply the room's automatic brightness, then arm daylight tracking |
+| `applyRoomAuto(room, options)` | **async.** The mapped values, moved by daylight, written to the room. Shared by the card and by every re-evaluation, so the two cannot drift apart |
+| `daylightSettings()` / `roomDaylight(roomId)` | The room → `{ source, dark, bright, swing }` map from app settings, and one room's entry after validation (`null` when unusable) |
+| `geolocation()` | The house's latitude and longitude, or `null` on a Homey that cannot answer — needs the `homey:manager:geolocation` permission |
+| `capabilityReading(deviceId, capabilityId)` | **async.** A numeric capability value with the age of the reading, or `null` for any way a stored device id stops meaning anything |
+| `cloudiness()` | **async.** The cloud-cover percentage to scale the clear sky by, or `null` to drop the term (unmapped, unresolvable, capability gone, or stale) |
+| `daylightLux(config)` / `daylightAdjusted(room, circadian)` | **async.** The room's daylight reading in lux, and the circadian brightness after it has been moved |
+| `armDaylight()` / `disarmDaylight()` / `disarmAllDaylight()` | Start and stop correcting a room: a capability subscription for a sensor source, a timer for a modelled one. Re-arming the same source does not stack a second listener |
+| `reviewDaylight(roomId)` | **async.** One re-evaluation: disarm if the room is dark, otherwise recompute and write, unless the change is inside the deadband |
+| `stopDaylightTracking(room)` | Backs the stop card |
+| `daylightPage()` / `setDaylight(body)` | **async.** The daylight half of the settings route: every source with its current reading, and the validated save |
+| `devicesWith(capabilityId)` | **async.** The ids of every device currently exposing a capability, so a saved source that no longer measures it can be refused |
 | `turnOffRoomLights(room, role)` | Backs the turn-off card, and the off half of the toggle |
 | `anyLightsOn(room, role)` | **async.** True when any non-excluded light of the role is on — backs the condition card and the toggle |
 | `dimRoomLights(room, role, direction, step)` | Relative dim of the lights currently on, clamped to 0–1; reaching the off threshold turns off |
@@ -233,9 +291,10 @@ Rebuilds are debounced by 5 s (`REBUILD_DEBOUNCE_MS`) so a burst of events colla
 ## Repository layout
 
 ```
-app.js                      the app: zone map, role filtering, Flow cards
+app.js                      the app: zone map, role filtering, Flow cards, daylight tracking
+lib/daylight.js             pure arithmetic: solar position, the lux → brightness mapping
 api.js                      the four HTTP routes the settings page calls
-settings/index.html         the role editor and the room → variable mapping
+settings/index.html         the role editor, the room → variable mapping, the daylight table
 app.json                    GENERATED — do not edit by hand
 .homeycompose/
   app.json                  app manifest source, including the api routes

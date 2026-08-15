@@ -1,0 +1,28 @@
+{
+	"title": {
+		"en": "Stop daylight tracking",
+		"fr": "Arrêter le suivi de la lumière du jour"
+	},
+	"hint": {
+		"en": "Stops correcting the room's brightness as the daylight changes, until the automatic card runs again. Put this in a mood Flow so a mood is not overwritten a few minutes later.",
+		"fr": "Arrête de corriger la luminosité de la pièce selon la lumière du jour, jusqu'à la prochaine exécution de la carte automatique. À placer dans un Flow d'ambiance pour qu'une ambiance ne soit pas écrasée quelques minutes plus tard."
+	},
+	"titleFormatted": {
+		"en": "Stop daylight tracking in [[room]]",
+		"fr": "Arrêter le suivi de la lumière du jour dans [[room]]"
+	},
+	"args": [
+		{
+			"type": "autocomplete",
+			"name": "room",
+			"title": {
+				"en": "Room",
+				"fr": "Pièce"
+			},
+			"placeholder": {
+				"en": "Bedroom",
+				"fr": "Chambre"
+			}
+		}
+	]
+}

@@ -2,6 +2,12 @@
 
 const Homey = require("homey");
 const { HomeyAPI } = require("homey-api");
+const {
+  MODELLED_SOURCE,
+  daylightBrightness,
+  modelledLux,
+  validDaylight,
+} = require("./lib/daylight");
 
 // Rebuilds are debounced so a burst of events (pairing several devices, moving
 // a room around) collapses into a single rebuild...
@@ -39,6 +45,27 @@ const ROLE_EXCLUDED = "excluded";
 // where 0 restores the old exact-zero behaviour.
 const DEFAULT_OFF_BELOW = 0.05;
 
+// How far the daylight-adjusted brightness has to move before it is worth
+// writing. Without it, a room on a twitchy sensor would command every light it
+// owns every five minutes for a change nobody can see — Zigbee traffic rather
+// than lighting. With it, the loop settles on a fixed point instead of
+// creeping around one.
+const DAYLIGHT_DEADBAND = 0.03;
+
+// A modelled room has no sensor to wake it, so it re-evaluates on a timer. Five
+// minutes is the cadence a Hue sensor reports at, so both kinds of room move at
+// the same speed and neither can outrun the other.
+const MODELLED_INTERVAL_MS = 5 * 60 * 1000;
+
+// A cloudiness reading older than this is not describing the sky now. The
+// weather device this was written against sat frozen for three weeks while
+// still answering with an entirely plausible number, so nothing but the
+// timestamp can tell the difference.
+const WEATHER_STALE_MS = 3 * 60 * 60 * 1000;
+
+const LUX_CAPABILITY = "measure_luminance";
+const CLOUD_CAPABILITY = "measure_cloudiness";
+
 // What a snapshot remembers besides onoff, and the order it is replayed in.
 const SNAPSHOT_CAPABILITIES = ["dim", "light_temperature", "light_hue", "light_saturation"];
 
@@ -65,6 +92,11 @@ class RoomLights extends Homey.App {
   // id -> topologyKey() as of the last rebuild, see topologyChanged().
   deviceIndex = new Map();
   rebuildDeadline = null;
+
+  // room id -> what a room currently tracking daylight needs to keep going, see
+  // armDaylight(). Held in memory only: a restart clears it, and the next
+  // automatic card re-arms whatever a Flow still wants.
+  daylightTracking = new Map();
 
   // ---------------------------------------------------------------- lifecycle
 
@@ -120,6 +152,13 @@ class RoomLights extends Homey.App {
     action("saveroomlights", (a) => this.saveRoomLights(a.room));
     action("restoreroomlights", (a) => this.restoreRoomLights(a.room));
     action("setroomlightsauto", (a) => this.setRoomLightsAuto(a.room, this.filters(a)));
+    action("stopdaylighttracking", (a) => this.stopDaylightTracking(a.room));
+  }
+
+  // Every listener this app owns outlives a single card, so a shutdown that
+  // left them running would keep a torn-down app writing to bulbs.
+  async onUninit() {
+    this.disarmAllDaylight();
   }
 
   /**
@@ -182,6 +221,12 @@ class RoomLights extends Homey.App {
   // ----------------------------------------------------------------- topology
 
   async buildRoomLightsZones() {
+    // A rebuild replaces every Device object in the map, and a capability
+    // instance is bound to the object it was made from. Keeping the old ones
+    // would leak a listener per rebuild against a device nobody holds any more,
+    // so tracking stops here and a Flow re-arms it on the next automatic card.
+    this.disarmAllDaylight();
+
     // A rebuild reads everything anyway, and the topology it produces must not
     // be answered about with state older than itself.
     this.invalidateDevices();
@@ -222,6 +267,7 @@ class RoomLights extends Homey.App {
     this.deviceIndex = deviceIndex;
     this.pruneByRoom("lightSnapshots");
     this.pruneByRoom("roomDefaults");
+    this.pruneByRoom("daylight");
   }
 
   // Rooms get deleted; anything keyed by room would otherwise sit in app
@@ -560,8 +606,232 @@ class RoomLights extends Homey.App {
   }
 
   async setRoomLightsAuto(room, options) {
+    const target = await this.applyRoomAuto(room, options);
+    await this.armDaylight(room, options, target);
+  }
+
+  // Shared by the automatic card and by every daylight re-evaluation, so the
+  // two can never drift apart on what a room's automatic brightness means.
+  async applyRoomAuto(room, options) {
     const { brightness, temperature } = await this.roomDefaultValues(room);
-    await this.setLightsBrightness(room, brightness, temperature, options);
+    const target = await this.daylightAdjusted(room, brightness);
+    await this.setLightsBrightness(room, target, temperature, options);
+    return target;
+  }
+
+  // ------------------------------------------------------------------ daylight
+
+  // room id -> { source, dark, bright, swing }. Validated on the way out rather
+  // than trusted, so a hand-edited or half-migrated entry reads as "this room
+  // has no daylight" — today's behaviour — instead of as something to divide by.
+  daylightSettings() {
+    return this.homey.settings.get("daylight") || {};
+  }
+
+  roomDaylight(roomId) {
+    return validDaylight(this.daylightSettings()[roomId]);
+  }
+
+  weatherDeviceId() {
+    const stored = this.homey.settings.get("weatherDevice");
+    return typeof stored === "string" && stored.length > 0 ? stored : null;
+  }
+
+  // The house's own coordinates, which is all the solar model needs. A Homey
+  // too old to have the manager, or one where the permission was refused, has
+  // no modelled daylight at all — the settings page reports that as a missing
+  // reading, and armDaylight() logs it once rather than every five minutes.
+  geolocation() {
+    const manager = this.homey.geolocation;
+    if (manager == null) {
+      return null;
+    }
+    try {
+      const latitude = manager.getLatitude();
+      const longitude = manager.getLongitude();
+      if (typeof latitude !== "number" || typeof longitude !== "number") {
+        return null;
+      }
+      return { latitude, longitude };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // A numeric capability value from a live read, with the age of the reading.
+  // Null for every ordinary way a device id stored in settings months ago stops
+  // meaning anything: the device is gone, it never had the capability, it lost
+  // it in a driver update, or the value is not a number.
+  async capabilityReading(deviceId, capabilityId) {
+    if (deviceId == null) {
+      return null;
+    }
+    const devices = await this.freshDevices();
+    const device = devices[deviceId];
+    const caps = device == null ? null : device.capabilitiesObj;
+    const entry = caps == null ? null : caps[capabilityId];
+    if (entry == null || typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+      return null;
+    }
+    const stamp = entry.lastUpdated == null ? NaN : new Date(entry.lastUpdated).getTime();
+    return { value: entry.value, updatedAt: Number.isFinite(stamp) ? stamp : null };
+  }
+
+  // The cloudiness term, or null to drop it. Null is the right answer to every
+  // way this can go wrong, because dropping the term leaves a clean clear-sky
+  // curve while trusting a dead one steers the lights from a forecast that
+  // expired weeks ago — which is the failure this house actually had. A reading
+  // carrying no timestamp at all is taken at face value: absent is not stale.
+  async cloudiness() {
+    const reading = await this.capabilityReading(this.weatherDeviceId(), CLOUD_CAPABILITY);
+    if (reading == null) {
+      return null;
+    }
+    if (reading.updatedAt != null && Date.now() - reading.updatedAt > WEATHER_STALE_MS) {
+      return null;
+    }
+    return reading.value;
+  }
+
+  // Whatever the room's configured source says the daylight is, in lux.
+  async daylightLux(config) {
+    if (config.source === MODELLED_SOURCE) {
+      const where = this.geolocation();
+      if (where == null) {
+        return null;
+      }
+      return modelledLux(where.latitude, where.longitude, new Date(), await this.cloudiness());
+    }
+    const reading = await this.capabilityReading(config.source, LUX_CAPABILITY);
+    return reading == null ? null : reading.value;
+  }
+
+  // The circadian brightness, moved by daylight. A room with no daylight
+  // configured — and a room whose reading cannot be had — gets the circadian
+  // value untouched, which is what it got before this feature existed.
+  async daylightAdjusted(room, circadian) {
+    const config = this.roomDaylight(room.id);
+    if (config == null) {
+      return circadian;
+    }
+    return daylightBrightness(circadian, await this.daylightLux(config), config);
+  }
+
+  // Start correcting a room as its daylight moves. A sensor room rides the
+  // sensor's own reports, which is the loop rate the hardware already imposes;
+  // a modelled room has nothing to wake it, so it runs on a timer at the same
+  // cadence.
+  async armDaylight(room, options, lastWritten) {
+    const config = this.roomDaylight(room.id);
+    if (config == null) {
+      // The room may have been tracking before its source was cleared.
+      this.disarmDaylight(room.id);
+      return;
+    }
+
+    const existing = this.daylightTracking.get(room.id);
+    if (existing != null && existing.source === config.source) {
+      // Re-running the card on a room already tracking the same source must not
+      // stack a second listener on it. Only what the card carried is refreshed.
+      existing.room = room;
+      existing.options = options;
+      existing.lastWritten = lastWritten;
+      return;
+    }
+    this.disarmDaylight(room.id);
+
+    const where = room.name || room.id;
+    const tick = () =>
+      this.reviewDaylight(room.id).catch((err) => this.error(`Daylight review failed for ${where}`, err));
+    const entry = { room, options, lastWritten, source: config.source, instance: null, timer: null };
+    this.daylightTracking.set(room.id, entry);
+
+    if (config.source === MODELLED_SOURCE) {
+      if (this.geolocation() == null) {
+        this.error(`No geolocation for the modelled daylight of ${where}; check the app's permissions.`);
+      }
+      entry.timer = this.homey.setInterval(tick, MODELLED_INTERVAL_MS);
+      return;
+    }
+
+    // A sensor that has been unpaired since it was mapped leaves the room on
+    // plain circadian brightness. Tracking it would subscribe to nothing and
+    // only make the settings page look like it is working.
+    const devices = await this.freshDevices();
+    const sensor = devices[config.source];
+    try {
+      entry.instance = sensor.makeCapabilityInstance(LUX_CAPABILITY, tick);
+    } catch (err) {
+      this.error(`Could not follow the lux sensor mapped to ${where}`, err);
+      this.disarmDaylight(room.id);
+    }
+  }
+
+  disarmDaylight(roomId) {
+    const entry = this.daylightTracking.get(roomId);
+    if (entry == null) {
+      return;
+    }
+    // Dropped first, so a destroy that throws still leaves the room untracked
+    // rather than stuck with a listener nothing can reach.
+    this.daylightTracking.delete(roomId);
+    if (entry.instance != null) {
+      try {
+        entry.instance.destroy();
+      } catch (err) {
+        this.error("Could not release a lux subscription", err);
+      }
+    }
+    if (entry.timer != null) {
+      this.homey.clearInterval(entry.timer);
+    }
+  }
+
+  disarmAllDaylight() {
+    for (const roomId of [...this.daylightTracking.keys()]) {
+      this.disarmDaylight(roomId);
+    }
+  }
+
+  // The card a mood Flow carries. homey-api exposes no moods manager and so no
+  // mood event an app can subscribe to, which makes saying so explicitly the
+  // only way a mood can stop this app correcting a room five minutes later.
+  stopDaylightTracking(room) {
+    if (room != null && room.id != null) {
+      this.disarmDaylight(room.id);
+    }
+  }
+
+  async reviewDaylight(roomId) {
+    const entry = this.daylightTracking.get(roomId);
+    if (entry == null) {
+      return;
+    }
+
+    // A room with nothing on is a room to stop correcting. This is also how
+    // daylight stops itself: once the target falls through the off threshold
+    // the room goes dark, and the next reading disarms instead of waking it up
+    // again at dusk. Turning a room back on is a Flow's decision, never this
+    // app's — the same rule relative dimming already follows.
+    if (!(await this.anyLightsOn(entry.room, null))) {
+      this.disarmDaylight(roomId);
+      return;
+    }
+
+    const { brightness, temperature } = await this.roomDefaultValues(entry.room);
+    const target = await this.daylightAdjusted(entry.room, brightness);
+
+    // Those awaits are real round-trips, and a stop card or a rebuild during
+    // one must win.
+    if (this.daylightTracking.get(roomId) !== entry) {
+      return;
+    }
+    if (entry.lastWritten != null && Math.abs(target - entry.lastWritten) <= DAYLIGHT_DEADBAND) {
+      return;
+    }
+
+    entry.lastWritten = target;
+    await this.setLightsBrightness(entry.room, target, temperature, entry.options);
   }
 
   // ---------------------------------------------------------------- snapshots
@@ -700,7 +970,50 @@ class RoomLights extends Homey.App {
       variables,
       mappings: this.roomDefaults(),
       offBelow: this.offBelow(),
+      ...(await this.daylightPage()),
     };
+  }
+
+  // Everything the daylight section of the page needs, including each source's
+  // current reading. Choosing a dark and a bright anchor blind is the one part
+  // of this a person cannot do from the settings page alone, and the
+  // alternative is a round trip through Insights for every room.
+  async daylightPage() {
+    const devices = Object.values(await this.freshDevices());
+    const reading = (device, capabilityId) => {
+      const entry = device.capabilitiesObj == null ? null : device.capabilitiesObj[capabilityId];
+      return entry != null && typeof entry.value === "number" ? entry.value : null;
+    };
+    const listing = (capabilityId) =>
+      devices
+        .filter((device) => (device.capabilities || []).includes(capabilityId))
+        .map((device) => ({ id: device.id, name: device.name, value: reading(device, capabilityId) }));
+
+    const where = this.geolocation();
+    return {
+      daylight: this.daylightSettings(),
+      luxSources: listing(LUX_CAPABILITY),
+      weatherSources: listing(CLOUD_CAPABILITY),
+      weather: this.weatherDeviceId(),
+      // Null means the model cannot run at all — no geolocation — which the
+      // page says out loud rather than showing a plausible zero.
+      modelled:
+        where == null
+          ? null
+          : modelledLux(where.latitude, where.longitude, new Date(), await this.cloudiness()),
+    };
+  }
+
+  // The ids of every device currently exposing a capability. Used to refuse a
+  // saved source that no longer measures what it was picked for — a weather
+  // device replaced in place is how this house lost `measure_ultraviolet`.
+  async devicesWith(capabilityId) {
+    const devices = Object.values(await this.freshDevices());
+    return new Set(
+      devices
+        .filter((device) => (device.capabilities || []).includes(capabilityId))
+        .map((device) => String(device.id))
+    );
   }
 
   // The page sends the whole map back, so anything it could not see would be
@@ -743,7 +1056,51 @@ class RoomLights extends Homey.App {
       this.homey.settings.set("offBelow", threshold);
     }
 
-    return { mappings: valid, offBelow: this.offBelow() };
+    await this.setDaylight(body);
+    return {
+      mappings: valid,
+      offBelow: this.offBelow(),
+      daylight: this.daylightSettings(),
+      weather: this.weatherDeviceId(),
+    };
+  }
+
+  // Daylight rides on the same save, for the same reason the threshold does: it
+  // belongs to the same section of the page, and the page sends the whole map
+  // back either way.
+  //
+  // Every entry goes through the reader's own validator, so the page can never
+  // store something the reader would then have to paper over, and a source is
+  // refused unless a device that still measures it can be found.
+  async setDaylight(body) {
+    const rooms = new Set(this.zoneFilter.map((zone) => zone.id));
+    const luxDevices = await this.devicesWith(LUX_CAPABILITY);
+    const cloudDevices = await this.devicesWith(CLOUD_CAPABILITY);
+
+    const daylight = {};
+    const offered = (body && body.daylight) || {};
+    for (const roomId of Object.keys(offered)) {
+      const entry = rooms.has(roomId) ? validDaylight(offered[roomId]) : null;
+      if (entry == null) {
+        continue;
+      }
+      if (entry.source !== MODELLED_SOURCE && !luxDevices.has(String(entry.source))) {
+        continue;
+      }
+      daylight[roomId] = entry;
+    }
+    this.homey.settings.set("daylight", daylight);
+
+    const weather = body && body.weather;
+    this.homey.settings.set(
+      "weatherDevice",
+      typeof weather === "string" && cloudDevices.has(weather) ? weather : null
+    );
+
+    // A room whose anchors or source just changed is still being corrected
+    // against the old ones. Stopping every tracker is cheaper than working out
+    // which changed, and a Flow re-arms whatever it still wants within minutes.
+    this.disarmAllDaylight();
   }
 
   setLightRoles(roles) {

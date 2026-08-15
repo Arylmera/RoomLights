@@ -134,6 +134,34 @@
       td.pick {
         padding: 5px 0 5px 8px;
       }
+      td.num {
+        padding: 5px 0 5px 8px;
+        width: 14%;
+      }
+      td.num input {
+        font: inherit;
+        width: 100%;
+        box-sizing: border-box;
+        text-align: right;
+        color: var(--fg);
+        background: var(--field-bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      td.num input:focus-visible {
+        outline: 2px solid var(--fg);
+        outline-offset: 1px;
+      }
+      /* The daylight table carries five columns where the defaults table
+         carries three, so its room column has to give way. */
+      table.daylight td.room {
+        width: 26%;
+      }
+      .threshold select {
+        width: auto;
+        min-width: 190px;
+      }
       button.fill {
         font: inherit;
         color: var(--fg);
@@ -201,7 +229,8 @@
           font-weight: 600;
           padding-top: 10px;
         }
-        table.defaults td.pick::before {
+        table.defaults td.pick::before,
+        table.defaults td.num::before {
           content: attr(data-label);
           display: block;
           font-size: 11px;
@@ -210,6 +239,9 @@
           letter-spacing: 0.06em;
           color: var(--faint);
           margin: 6px 0 3px;
+        }
+        table.defaults td.num input {
+          text-align: left;
         }
       }
     </style>
@@ -242,6 +274,30 @@
     <button class="fill" id="autofill" data-i18n="defaults.autofill">Fill in from names</button>
     <div id="defaults"></div>
 
+    <hr />
+
+    <h1 class="homey-title" data-i18n="daylight.title">Daylight</h1>
+    <p class="homey-subtitle intro" data-i18n="daylight.intro">
+      Let the light a room already has move its automatic brightness. Pick where the room reads
+      daylight from, then the two lux values that mean “as dark as it gets” and “as bright as it
+      gets”. Between them the mapped brightness passes through unchanged. Rooms left unset behave
+      exactly as before.
+    </p>
+    <div class="threshold">
+      <label for="weather" data-i18n="daylight.weather">Cloudiness from</label>
+      <select class="homey-form-select" id="weather"></select>
+    </div>
+    <p class="homey-subtitle intro" data-i18n="daylight.weatherhint">
+      Modelled daylight is computed from the sun's position and this device's cloud cover — it never
+      sees your lamps, so it cannot chase itself. With no device mapped, or once its reading goes
+      stale, the model falls back to a clear sky rather than to darkness.
+    </p>
+    <div id="daylight"></div>
+    <p class="homey-subtitle intro" data-i18n="daylight.swinghint">
+      How far daylight may move the mapped brightness, up or down. Keep it small: a sensor sitting in
+      the room it lights can otherwise chase its own lamps up and down for hours.
+    </p>
+
     <script type="text/javascript">
       var ROLES = [
         { id: "ambient", label: "settings.ambient" },
@@ -254,6 +310,24 @@
       var variables = [];
       var mappings = {};
       var offBelow = 0.05;
+
+      var daylight = {};
+      var luxSources = [];
+      var weatherSources = [];
+      var weather = "";
+      var modelled = null;
+
+      var MODELLED = "modelled";
+
+      // What a room gets the moment a source is first picked, before anyone has
+      // read a week of Insights. An indoor sensor and the outdoor model live on
+      // completely different scales, so they cannot share one pair: the house's
+      // own sensors run 1-155 lx, while modelled outdoor light reaches tens of
+      // thousands.
+      var SEED = {
+        device: { dark: 1, bright: 100, swing: 0.2 },
+        modelled: { dark: 200, bright: 20000, swing: 0.2 },
+      };
 
       function onHomeyReady(Homey) {
         Homey.api("GET", "/lights", null, function (err, result) {
@@ -281,8 +355,15 @@
           variables = (result && result.variables) || [];
           mappings = (result && result.mappings) || {};
           if (result && typeof result.offBelow === "number") offBelow = result.offBelow;
+          daylight = (result && result.daylight) || {};
+          luxSources = (result && result.luxSources) || [];
+          weatherSources = (result && result.weatherSources) || [];
+          weather = (result && result.weather) || "";
+          modelled = result && typeof result.modelled === "number" ? result.modelled : null;
           renderThreshold(Homey);
           renderDefaults(Homey);
+          renderWeather(Homey);
+          renderDaylight(Homey);
           document.getElementById("autofill").onclick = function () {
             autofill();
             saveDefaults(Homey);
@@ -387,17 +468,28 @@
       // ------------------------------------------------- automatic brightness
 
       function saveDefaults(Homey) {
-        var body = { mappings: mappings, offBelow: offBelow };
+        var body = {
+          mappings: mappings,
+          offBelow: offBelow,
+          daylight: daylight,
+          weather: weather,
+        };
         Homey.api("PUT", "/defaults", body, function (err, saved) {
           if (err) return Homey.alert(err);
           // Show what was actually kept: a room with no brightness variable is
           // dropped, and so is a variable that has since been deleted. The
           // threshold comes back too, so a rejected one snaps back rather than
-          // leaving the box showing a value the app never stored.
+          // leaving the box showing a value the app never stored. Daylight
+          // rides the same rule — inverted anchors come back as no daylight at
+          // all instead of sitting in the boxes looking accepted.
           mappings = (saved && saved.mappings) || {};
           if (saved && typeof saved.offBelow === "number") offBelow = saved.offBelow;
+          daylight = (saved && saved.daylight) || {};
+          weather = (saved && saved.weather) || "";
           renderThreshold(Homey);
           renderDefaults(Homey);
+          renderWeather(Homey);
+          renderDaylight(Homey);
         });
       }
 
@@ -492,6 +584,188 @@
         };
 
         return select;
+      }
+
+      // ---------------------------------------------------------------- daylight
+
+      function renderWeather(Homey) {
+        var select = document.getElementById("weather");
+        select.innerHTML = "";
+
+        var none = document.createElement("option");
+        none.value = "";
+        none.textContent = Homey.__("daylight.unset");
+        select.appendChild(none);
+
+        weatherSources.forEach(function (source) {
+          var option = document.createElement("option");
+          option.value = source.id;
+          option.textContent = withReading(Homey, source.name, source.value, "%");
+          option.selected = String(source.id) === String(weather);
+          select.appendChild(option);
+        });
+
+        select.onchange = function () {
+          weather = select.value;
+          saveDefaults(Homey);
+        };
+      }
+
+      // "Occupency bureau (13.2 lx now)". Picking a dark and a bright anchor is
+      // the one thing this page cannot do for you, so every source it offers
+      // carries what it reads at this moment.
+      function withReading(Homey, name, value, unit) {
+        if (typeof value !== "number") {
+          return name + " (" + Homey.__("daylight.unread") + ")";
+        }
+        return name + " (" + formatLux(value) + " " + unit + " " + Homey.__("daylight.now") + ")";
+      }
+
+      // Readings run from a fraction of a lux to six figures. A fixed number of
+      // decimals is unreadable at one end or the other.
+      function formatLux(value) {
+        if (value >= 100) return String(Math.round(value));
+        if (value >= 10) return value.toFixed(1);
+        return value.toFixed(2);
+      }
+
+      function renderDaylight(Homey) {
+        var container = document.getElementById("daylight");
+        container.innerHTML = "";
+
+        if (rooms.length === 0) {
+          var empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = Homey.__("settings.none");
+          container.appendChild(empty);
+          return;
+        }
+
+        var labels = ["daylight.source", "daylight.dark", "daylight.bright", "daylight.swing"].map(
+          function (label) {
+            return Homey.__(label);
+          }
+        );
+
+        var table = document.createElement("table");
+        table.className = "defaults daylight";
+        var head = table.insertRow();
+        head.className = "head";
+        head.insertCell().className = "room";
+        labels.forEach(function (label, index) {
+          var cell = head.insertCell();
+          cell.className = index === 0 ? "pick" : "num";
+          var heading = document.createElement("h3");
+          heading.textContent = label;
+          heading.style.margin = "0";
+          cell.appendChild(heading);
+        });
+
+        rooms.forEach(function (room) {
+          var row = table.insertRow();
+          var name = row.insertCell();
+          name.className = "room";
+          name.textContent = room.name;
+
+          var source = row.insertCell();
+          source.className = "pick";
+          // Read back by the narrow layout, where the header row is hidden.
+          source.setAttribute("data-label", labels[0]);
+          source.appendChild(sourcePicker(Homey, room));
+
+          ["dark", "bright", "swing"].forEach(function (field, index) {
+            var cell = row.insertCell();
+            cell.className = "num";
+            cell.setAttribute("data-label", labels[index + 1]);
+            cell.appendChild(anchorInput(Homey, room, field));
+          });
+        });
+
+        container.appendChild(table);
+
+        // Only ever null when Homey has no coordinates, so the model cannot run
+        // at all. Night is a zero, not a missing reading.
+        if (modelled === null) {
+          var note = document.createElement("div");
+          note.className = "empty";
+          note.textContent = Homey.__("daylight.nogeo");
+          container.appendChild(note);
+        }
+      }
+
+      function sourcePicker(Homey, room) {
+        var chosen = (daylight[room.id] || {}).source || "";
+        var select = document.createElement("select");
+        select.className = "homey-form-select";
+
+        var none = document.createElement("option");
+        none.value = "";
+        none.textContent = Homey.__("daylight.unset");
+        select.appendChild(none);
+
+        var model = document.createElement("option");
+        model.value = MODELLED;
+        model.textContent = withReading(Homey, Homey.__("daylight.modelled"), modelled, "lx");
+        model.selected = chosen === MODELLED;
+        select.appendChild(model);
+
+        luxSources.forEach(function (source) {
+          var option = document.createElement("option");
+          option.value = source.id;
+          option.textContent = withReading(Homey, source.name, source.value, "lx");
+          option.selected = String(source.id) === String(chosen);
+          select.appendChild(option);
+        });
+
+        select.onchange = function () {
+          if (!select.value) {
+            delete daylight[room.id];
+            return saveDefaults(Homey);
+          }
+          // A room's own sensor reads single lux; the outdoor model reads tens
+          // of thousands. Anchors carry over between two sensors, but switching
+          // between a sensor and the model reseeds them — keeping 1 and 100 for
+          // modelled daylight would peg the room at full swing all day.
+          var entry = daylight[room.id];
+          var sameKind = entry != null && (entry.source === MODELLED) === (select.value === MODELLED);
+          var seed = select.value === MODELLED ? SEED.modelled : SEED.device;
+          daylight[room.id] = {
+            source: select.value,
+            dark: sameKind ? entry.dark : seed.dark,
+            bright: sameKind ? entry.bright : seed.bright,
+            swing: sameKind ? entry.swing : seed.swing,
+          };
+          saveDefaults(Homey);
+        };
+
+        return select;
+      }
+
+      // Swing is stored as a 0-1 fraction and shown as a percentage, the same
+      // way the off-threshold is. The anchors are lux and are shown as they are.
+      function anchorInput(Homey, room, field) {
+        var entry = daylight[room.id];
+        var swing = field === "swing";
+        var input = document.createElement("input");
+        input.type = "number";
+        input.min = swing ? 0 : 0.1;
+        input.step = swing ? 1 : "any";
+        if (swing) input.max = 100;
+        input.disabled = entry == null;
+        if (entry != null) {
+          input.value = swing ? Math.round(entry.swing * 100) : entry[field];
+        }
+        input.onchange = function () {
+          var current = daylight[room.id];
+          if (current == null) return;
+          var parsed = parseFloat(input.value);
+          // An empty or non-numeric box means "leave it alone", not "zero" —
+          // the same rule the off-threshold box follows.
+          if (isNaN(parsed)) return renderDaylight(Homey);
+          current[field] = swing ? Math.min(1, Math.max(0, parsed / 100)) : parsed;
+          saveDefaults(Homey);
+        };
+        return input;
       }
 
       // A house that names its variables "<Room> - Brightness" is mapped in one

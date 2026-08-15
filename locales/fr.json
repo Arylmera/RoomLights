@@ -18,5 +18,21 @@
     "brightness": "Luminosité",
     "temperature": "Température",
     "unset": "Non associée"
+  },
+  "daylight": {
+    "title": "Lumière du jour",
+    "intro": "Laissez la lumière déjà présente dans une pièce ajuster sa luminosité automatique. Choisissez d'où la pièce lit la lumière du jour, puis les deux valeurs en lux qui signifient « au plus sombre » et « au plus clair ». Entre les deux, la luminosité associée passe sans changement. Les pièces non renseignées se comportent exactement comme avant.",
+    "source": "Lumière mesurée par",
+    "modelled": "Lumière du jour modélisée",
+    "unset": "Aucune",
+    "dark": "Sombre (lux)",
+    "bright": "Clair (lux)",
+    "swing": "Amplitude (%)",
+    "swinghint": "De combien la lumière du jour peut déplacer la luminosité associée, vers le haut ou vers le bas. Gardez une petite valeur : un capteur placé dans la pièce qu'il éclaire peut sinon poursuivre ses propres lampes pendant des heures.",
+    "weather": "Nébulosité mesurée par",
+    "weatherhint": "La lumière du jour modélisée est calculée à partir de la position du soleil et de la nébulosité de cet appareil — elle ne voit jamais vos lampes et ne peut donc pas se poursuivre elle-même. Sans appareil associé, ou dès que sa mesure n'est plus à jour, le modèle retombe sur un ciel dégagé plutôt que sur l'obscurité.",
+    "nogeo": "Homey n'a pas de position définie : la lumière du jour modélisée ne peut pas être calculée.",
+    "now": "actuellement",
+    "unread": "aucune mesure"
   }
 }

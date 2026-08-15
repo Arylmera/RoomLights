@@ -13,5 +13,9 @@
   "1.3.0": {
     "en": "Lights no longer sit at a faint glow when the brightness is meant to be zero. A brightness at or below a threshold — 5 % by default, adjustable in the app settings — now turns lights off instead of dimming them to almost nothing.",
     "fr": "Les lumières ne rougeoient plus lorsque la luminosité devrait être nulle. Une luminosité inférieure ou égale à un seuil — 5 % par défaut, réglable dans les paramètres — éteint désormais les lumières au lieu de les faire descendre à presque rien."
+  },
+  "1.4.0": {
+    "en": "Rooms can now follow the daylight they already have. Point a room at a light sensor — or at modelled daylight, computed from the sun's position and cloud cover — and the automatic card raises its brightness on a dark day and lowers it on a bright one, then keeps correcting as the light moves. New card: stop daylight tracking, for mood Flows.",
+    "fr": "Les pièces peuvent désormais suivre la lumière du jour qu'elles reçoivent déjà. Associez une pièce à un capteur de luminosité — ou à la lumière du jour modélisée, calculée d'après la position du soleil et la nébulosité — et la carte automatique augmente la luminosité les jours sombres, la réduit les jours clairs, puis continue de corriger à mesure que la lumière change. Nouvelle carte : arrêter le suivi de la lumière du jour, pour les Flows d'ambiance."
   }
 }

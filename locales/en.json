@@ -18,5 +18,21 @@
     "brightness": "Brightness",
     "temperature": "Temperature",
     "unset": "Not mapped"
+  },
+  "daylight": {
+    "title": "Daylight",
+    "intro": "Let the light a room already has move its automatic brightness. Pick where the room reads daylight from, then the two lux values that mean “as dark as it gets” and “as bright as it gets”. Between them the mapped brightness passes through unchanged. Rooms left unset behave exactly as before.",
+    "source": "Daylight from",
+    "modelled": "Modelled daylight",
+    "unset": "None",
+    "dark": "Dark (lux)",
+    "bright": "Bright (lux)",
+    "swing": "Swing (%)",
+    "swinghint": "How far daylight may move the mapped brightness, up or down. Keep it small: a sensor sitting in the room it lights can otherwise chase its own lamps up and down for hours.",
+    "weather": "Cloudiness from",
+    "weatherhint": "Modelled daylight is computed from the sun's position and this device's cloud cover — it never sees your lamps, so it cannot chase itself. With no device mapped, or once its reading goes stale, the model falls back to a clear sky rather than to darkness.",
+    "nogeo": "Homey has no location set, so modelled daylight cannot be computed.",
+    "now": "now",
+    "unread": "no reading"
   }
 }
