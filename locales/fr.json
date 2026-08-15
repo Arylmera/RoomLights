@@ -34,6 +34,7 @@
     "nogeo": "Homey n'a pas de position définie : la lumière du jour modélisée ne peut pas être calculée.",
     "now": "actuellement",
     "unread": "aucune mesure",
-    "missing": "Capteur indisponible"
+    "missing": "Plus disponible",
+    "twitchy": "Des seuils séparés de moins d'un facteur dix avec une amplitude élevée laissent un capteur poursuivre ses propres lampes. Élargissez les seuils ou réduisez l'amplitude pour :"
   }
 }

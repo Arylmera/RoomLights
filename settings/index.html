@@ -614,13 +614,26 @@
         none.textContent = Homey.__("daylight.unset");
         select.appendChild(none);
 
+        var resolved = false;
         weatherSources.forEach(function (source) {
           var option = document.createElement("option");
           option.value = source.id;
           option.textContent = withReading(Homey, source.name, source.value, "%");
           option.selected = String(source.id) === String(weather);
+          if (option.selected) resolved = true;
           select.appendChild(option);
         });
+
+        // A weather device replaced in place gets a new id, which is how this
+        // house's own one went. Showing "None" would suggest nothing was ever
+        // configured, rather than that the configured thing has gone.
+        if (weather && !resolved) {
+          var missing = document.createElement("option");
+          missing.value = weather;
+          missing.textContent = Homey.__("daylight.missing");
+          missing.selected = true;
+          select.appendChild(missing);
+        }
 
         select.onchange = function () {
           weather = select.value;
@@ -699,6 +712,30 @@
         });
 
         container.appendChild(table);
+
+        // The stability argument assumes anchors at least a decade apart: the
+        // closer they sit, the more brightness moves per lux, and a sensor that
+        // can see its own lamps then has room to chase them. A configuration
+        // typed on purpose is not clamped, but it is worth saying out loud.
+        var twitchy = rooms.filter(function (room) {
+          var entry = daylight[room.id];
+          if (entry == null || entry.source === MODELLED) return false;
+          if (!(entry.dark > 0) || !(entry.bright > entry.dark)) return false;
+          return Math.log(entry.bright / entry.dark) / Math.LN10 < 1 && entry.swing > 0.25;
+        });
+        if (twitchy.length > 0) {
+          var warning = document.createElement("div");
+          warning.className = "empty";
+          warning.textContent =
+            Homey.__("daylight.twitchy") +
+            " " +
+            twitchy
+              .map(function (room) {
+                return room.name;
+              })
+              .join(", ");
+          container.appendChild(warning);
+        }
 
         // Only ever null when Homey has no coordinates, so the model cannot run
         // at all. Night is a zero, not a missing reading.

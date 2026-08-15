@@ -34,6 +34,7 @@
     "nogeo": "Homey has no location set, so modelled daylight cannot be computed.",
     "now": "now",
     "unread": "no reading",
-    "missing": "Sensor no longer available"
+    "missing": "No longer available",
+    "twitchy": "Anchors less than tenfold apart with a large swing let a sensor chase its own lamps. Widen the anchors or lower the swing for:"
   }
 }

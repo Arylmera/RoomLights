@@ -1799,6 +1799,61 @@ test("a rebuild during the arming read leaves nothing listening", async () => {
   assert.strictEqual(app.daylightTracking.size, 0);
 });
 
+// A sensor can report while the timer's run is still pushing writes out over
+// Zigbee. Two interleaved runs would race on lastWritten and could settle the
+// room on the older reading.
+test("overlapping reviews do not stack", async () => {
+  const { app, calls, sensor } = daylightApp({ lux: 10 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  calls.length = 0;
+  sensor.capabilitiesObj.measure_luminance.value = 90;
+
+  // Hold the first review inside its write, which is where a real one spends
+  // its time — a room of Zigbee bulbs is not commanded instantly.
+  const applyBrightness = app.setLightsBrightness.bind(app);
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  let firstWrite = true;
+  app.setLightsBrightness = async (...args) => {
+    if (firstWrite) {
+      firstWrite = false;
+      await held;
+    }
+    return applyBrightness(...args);
+  };
+
+  const running = app.reviewDaylight("salon");
+  // A fresh sensor report lands while those writes are still going out.
+  sensor.capabilitiesObj.measure_luminance.value = 1;
+  await app.reviewDaylight("salon");
+  release();
+  await running;
+  assert.strictEqual(calls.length, 2, "the room must be written once, not once per overlapping review");
+});
+
+// lastWritten is what the deadband measures against, so recording it before the
+// write means a write that never landed is remembered as though it had.
+test("a write that fails outright is retried rather than swallowed by the deadband", async () => {
+  const { app, calls, bulb, sensor } = daylightApp({ lux: 10 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  calls.length = 0;
+
+  const write = bulb.setCapabilityValue;
+  bulb.setCapabilityValue = async () => {
+    throw new Error("unreachable");
+  };
+  sensor.capabilitiesObj.measure_luminance.value = 90;
+  await assert.rejects(() => app.reviewDaylight("salon"), /unreachable/);
+
+  bulb.setCapabilityValue = write;
+  await app.reviewDaylight("salon");
+  assert.strictEqual(calls.length, 2, "a level the room never reached must not suppress the retry");
+});
+
 // The equation of time is worth a quarter of an hour, and a model that dropped
 // it entirely would still pass a single sunrise check. These two dates sit near
 // its opposite extremes; the latitude is the equator so the peak is sharp.

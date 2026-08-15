@@ -749,7 +749,15 @@ class RoomLights extends Homey.App {
     const where = room.name || room.id;
     const tick = () =>
       this.reviewDaylight(room.id).catch((err) => this.error(`Daylight review failed for ${where}`, err));
-    const entry = { room, options, lastWritten, source: config.source, instance: null, timer: null };
+    const entry = {
+      room,
+      options,
+      lastWritten,
+      source: config.source,
+      instance: null,
+      timer: null,
+      busy: false,
+    };
 
     if (config.source === MODELLED_SOURCE) {
       if (this.geolocation() == null) {
@@ -836,12 +844,24 @@ class RoomLights extends Homey.App {
     }
   }
 
+  // Reviews overlap by nature: a sensor can report while a five-minute timer's
+  // run is still pushing writes out over Zigbee. Two interleaved runs would
+  // race on lastWritten and could settle the room on the older reading, so the
+  // second one steps aside — another is due within minutes either way.
   async reviewDaylight(roomId) {
     const entry = this.daylightTracking.get(roomId);
-    if (entry == null) {
+    if (entry == null || entry.busy === true) {
       return;
     }
+    entry.busy = true;
+    try {
+      await this.runDaylightReview(roomId, entry);
+    } finally {
+      entry.busy = false;
+    }
+  }
 
+  async runDaylightReview(roomId, entry) {
     // A room with nothing on is a room to stop correcting. This is also how
     // daylight stops itself: once the target falls through the off threshold
     // the room goes dark, and the next reading disarms instead of waking it up
@@ -864,8 +884,12 @@ class RoomLights extends Homey.App {
       return;
     }
 
-    entry.lastWritten = target;
+    // Recorded only once the write has actually gone out. The re-entrancy guard
+    // above is what makes that safe — there is no second run to race — and it
+    // means a write that fails outright leaves lastWritten alone, so the next
+    // reading retries instead of being swallowed by the deadband.
     await this.setLightsBrightness(entry.room, target, temperature, entry.options);
+    entry.lastWritten = target;
   }
 
   // ---------------------------------------------------------------- snapshots
