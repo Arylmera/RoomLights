@@ -96,7 +96,13 @@ class RoomLights extends Homey.App {
   // room id -> what a room currently tracking daylight needs to keep going, see
   // armDaylight(). Held in memory only: a restart clears it, and the next
   // automatic card re-arms whatever a Flow still wants.
+  //
+  // daylightGen is bumped by anything that stops tracking, so an arm that was
+  // already in flight can tell it has been overtaken. A disarm cannot simply
+  // clear the Map for that case: the subscription it would need to destroy has
+  // not been created yet.
   daylightTracking = new Map();
+  daylightGen = 0;
 
   // ---------------------------------------------------------------- lifecycle
 
@@ -744,30 +750,55 @@ class RoomLights extends Homey.App {
     const tick = () =>
       this.reviewDaylight(room.id).catch((err) => this.error(`Daylight review failed for ${where}`, err));
     const entry = { room, options, lastWritten, source: config.source, instance: null, timer: null };
-    this.daylightTracking.set(room.id, entry);
 
     if (config.source === MODELLED_SOURCE) {
       if (this.geolocation() == null) {
         this.error(`No geolocation for the modelled daylight of ${where}; check the app's permissions.`);
       }
       entry.timer = this.homey.setInterval(tick, MODELLED_INTERVAL_MS);
+      this.daylightTracking.set(room.id, entry);
       return;
     }
 
-    // A sensor that has been unpaired since it was mapped leaves the room on
-    // plain circadian brightness. Tracking it would subscribe to nothing and
-    // only make the settings page look like it is working.
-    const devices = await this.freshDevices();
-    const sensor = devices[config.source];
+    // Nothing is published until the subscription exists. Publishing first and
+    // subscribing after leaves two holes: a read that rejects strands an entry
+    // with no listener, which the same-source branch above then treats as
+    // healthy forever, and a disarm landing during the read cannot destroy an
+    // instance that does not exist yet.
+    const generation = this.daylightGen;
+    let instance = null;
     try {
-      entry.instance = sensor.makeCapabilityInstance(LUX_CAPABILITY, tick);
+      const devices = await this.freshDevices();
+      // A sensor unpaired since it was mapped leaves the room on plain
+      // circadian brightness. Tracking it would subscribe to nothing and only
+      // make the settings page look like it is working. Neither this nor a
+      // failed read may fail the card: the lights are already where they were
+      // asked to go.
+      instance = devices[config.source].makeCapabilityInstance(LUX_CAPABILITY, tick);
     } catch (err) {
       this.error(`Could not follow the lux sensor mapped to ${where}`, err);
-      this.disarmDaylight(room.id);
+      return;
     }
+
+    // A stop card, a settings save, a rebuild or a shutdown during that read
+    // could not have seen this instance, so honouring them is our job.
+    if (this.daylightGen !== generation) {
+      try {
+        instance.destroy();
+      } catch (err) {
+        this.error("Could not release a lux subscription", err);
+      }
+      return;
+    }
+
+    entry.instance = instance;
+    this.daylightTracking.set(room.id, entry);
   }
 
   disarmDaylight(roomId) {
+    // Bumped before the early return, because the room may have an arm in
+    // flight that is not in the Map yet — that arm checks this counter.
+    this.daylightGen += 1;
     const entry = this.daylightTracking.get(roomId);
     if (entry == null) {
       return;
@@ -788,6 +819,9 @@ class RoomLights extends Homey.App {
   }
 
   disarmAllDaylight() {
+    // Bumped even when the Map is empty: a room mid-arm is not in it yet, and
+    // "stop everything" has to reach that one too.
+    this.daylightGen += 1;
     for (const roomId of [...this.daylightTracking.keys()]) {
       this.disarmDaylight(roomId);
     }

@@ -236,7 +236,8 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `deviceIndex` | `Map<id, "zone\|class\|name">` as of the last rebuild. Compared against on each `device.update` to decide whether the map is actually affected. It stores strings rather than device references on purpose: homey-api mutates its cached `Device` in place *before* emitting, so a retained reference would always compare equal |
 | `deviceCache` / `deviceGen` | The shared device read behind `freshDevices()`, and the generation counter that invalidates it. Anything that makes a read obsolete — one of our writes, or a rebuild — bumps the generation, so a read already in flight can neither be joined afterwards nor land in the cache |
 | `variableCache` | The same shape for `logicVariables()`, minus the generation counter: the app only ever reads Logic variables, so nothing it does can make a read stale |
-| `daylightTracking` | `Map<roomId, { room, options, lastWritten, source, instance, timer }>` — the rooms currently being corrected as their daylight moves, with the capability subscription or timer keeping each one going. In memory only: a restart clears it |
+| `daylightTracking` | `Map<roomId, { room, options, lastWritten, source, instance, timer }>` — the rooms currently being corrected as their daylight moves, with the capability subscription or timer keeping each one going. In memory only: a restart clears it. A room is only published here once its subscription exists, so a failed read cannot strand an entry that has no listener |
+| `daylightGen` | Bumped by anything that stops tracking, including a disarm of a room that is *not* in the map yet. An arm is asynchronous, so a stop card or rebuild landing during its device read has no instance to destroy — the arm compares this counter afterwards and destroys its own |
 
 ### Key methods
 
@@ -269,7 +270,7 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `capabilityReading(deviceId, capabilityId)` | **async.** A numeric capability value with the age of the reading, or `null` for any way a stored device id stops meaning anything |
 | `cloudiness()` | **async.** The cloud-cover percentage to scale the clear sky by, or `null` to drop the term (unmapped, unresolvable, capability gone, or stale) |
 | `daylightLux(config)` / `daylightAdjusted(room, circadian)` | **async.** The room's daylight reading in lux, and the circadian brightness after it has been moved |
-| `armDaylight()` / `disarmDaylight()` / `disarmAllDaylight()` | Start and stop correcting a room: a capability subscription for a sensor source, a timer for a modelled one. Re-arming the same source does not stack a second listener |
+| `armDaylight()` / `disarmDaylight()` / `disarmAllDaylight()` | Start and stop correcting a room: a capability subscription for a sensor source, a timer for a modelled one. Re-arming the same source does not stack a second listener, and a sensor that cannot be reached is logged rather than failing the card — the lights are already where they were asked to go |
 | `reviewDaylight(roomId)` | **async.** One re-evaluation: disarm if the room is dark, otherwise recompute and write, unless the change is inside the deadband |
 | `stopDaylightTracking(room)` | Backs the stop card |
 | `daylightPage()` / `setDaylight(body)` | **async.** The daylight half of the settings route: every source with its current reading, and the validated save |

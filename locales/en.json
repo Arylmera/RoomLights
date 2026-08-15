@@ -33,6 +33,7 @@
     "weatherhint": "Modelled daylight is computed from the sun's position and this device's cloud cover — it never sees your lamps, so it cannot chase itself. With no device mapped, or once its reading goes stale, the model falls back to a clear sky rather than to darkness.",
     "nogeo": "Homey has no location set, so modelled daylight cannot be computed.",
     "now": "now",
-    "unread": "no reading"
+    "unread": "no reading",
+    "missing": "Sensor no longer available"
   }
 }

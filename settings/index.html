@@ -225,9 +225,13 @@
           border: 0;
           padding: 2px 0;
         }
+        /* The width has to be beaten here too: `table.daylight td.room` above
+           outranks `table.defaults td`, so without this the daylight room name
+           stays pinned to a quarter of the width in the block layout. */
         table.defaults td.room {
           font-weight: 600;
           padding-top: 10px;
+          width: auto;
         }
         table.defaults td.pick::before,
         table.defaults td.num::before {
@@ -317,6 +321,11 @@
       var weather = "";
       var modelled = null;
 
+      // The page PUTs whole maps, and those maps are empty until the GET lands.
+      // One transient read failure plus one click would otherwise wipe every
+      // variable mapping and every room's daylight settings.
+      var loaded = false;
+
       var MODELLED = "modelled";
 
       // What a room gets the moment a source is first picked, before anyone has
@@ -349,8 +358,10 @@
       function loadDefaults(Homey) {
         Homey.api("GET", "/defaults", null, function (err, result) {
           // Reading the Logic variables can fail on its own; the roles section
-          // above is still usable, so say so and carry on.
+          // above is still usable, so say so and carry on — but never save from
+          // a page whose state never arrived.
           if (err) Homey.alert(err);
+          loaded = !err;
           rooms = (result && result.rooms) || [];
           variables = (result && result.variables) || [];
           mappings = (result && result.mappings) || {};
@@ -468,12 +479,14 @@
       // ------------------------------------------------- automatic brightness
 
       function saveDefaults(Homey) {
+        if (!loaded) return;
         var body = {
           mappings: mappings,
           offBelow: offBelow,
           daylight: daylight,
           weather: weather,
         };
+        var sent = JSON.stringify(daylight);
         Homey.api("PUT", "/defaults", body, function (err, saved) {
           if (err) return Homey.alert(err);
           // Show what was actually kept: a room with no brightness variable is
@@ -489,7 +502,11 @@
           renderThreshold(Homey);
           renderDefaults(Homey);
           renderWeather(Homey);
-          renderDaylight(Homey);
+          // Rebuilding the daylight table replaces the input the user is
+          // typing in, and typing in one field saves the one before it — so
+          // only rebuild when the app actually changed something. A false
+          // mismatch costs a redraw, which is what used to happen every time.
+          if (JSON.stringify(daylight) !== sent) renderDaylight(Homey);
         });
       }
 
@@ -709,13 +726,27 @@
         model.selected = chosen === MODELLED;
         select.appendChild(model);
 
+        var resolved = chosen === MODELLED;
         luxSources.forEach(function (source) {
           var option = document.createElement("option");
           option.value = source.id;
           option.textContent = withReading(Homey, source.name, source.value, "lx");
           option.selected = String(source.id) === String(chosen);
+          if (option.selected) resolved = true;
           select.appendChild(option);
         });
+
+        // A sensor unpaired since it was mapped is still in the settings, and a
+        // select with no matching option silently shows its first one. Saying
+        // "None" there would be a lie the anchor boxes then contradict by
+        // staying filled in, so the stale source gets an option of its own.
+        if (chosen && !resolved) {
+          var missing = document.createElement("option");
+          missing.value = chosen;
+          missing.textContent = Homey.__("daylight.missing");
+          missing.selected = true;
+          select.appendChild(missing);
+        }
 
         select.onchange = function () {
           if (!select.value) {

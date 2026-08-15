@@ -27,7 +27,12 @@ function fakeApp({ zones, devices, roles, variables, defaults, offBelow, dayligh
   };
   app.homey = {
     settings: {
-      get: (key) => stored[key],
+      // Real Homey settings are serialised in and out, so a caller that mutates
+      // what it read changes nothing until it calls set(). Handing back the
+      // live object instead would make every "it persists" assertion pass on a
+      // code path that never saved — a stub wrong in the same direction as the
+      // code it is meant to guard.
+      get: (key) => (stored[key] === undefined ? undefined : structuredClone(stored[key])),
       set: (key, value) => {
         stored[key] = value;
       },
@@ -1271,6 +1276,9 @@ test("unusable anchors disable daylight for the room rather than dividing by zer
     { ...anchors, dark: 0 },
     { ...anchors, dark: -5 },
     { ...anchors, dark: 0.05 },
+    // One ULP apart: `bright > dark` is true, but their logarithms are the same
+    // double, so the span is exactly zero and the mapping would return NaN.
+    { ...anchors, dark: 100, bright: 100.00000000000001 },
     { ...anchors, bright: NaN },
     { ...anchors, swing: 1.5 },
     { ...anchors, swing: -0.1 },
@@ -1349,6 +1357,7 @@ const modelAnchors = { source: "modelled", dark: 200, bright: 20000, swing: 0.2 
 function daylightApp(config) {
   const opts = config || {};
   const calls = [];
+  const ambientCalls = [];
   const instances = { made: 0, destroyed: 0, listener: null };
   const bulb = {
     id: "bulb",
@@ -1389,9 +1398,23 @@ function daylightApp(config) {
       },
     },
   };
+  const strip = {
+    id: "strip",
+    zone: "salon",
+    class: "light",
+    name: "strip",
+    capabilities: ["onoff", "dim"],
+    capabilitiesObj: { onoff: { value: true }, dim: { value: 0.4 } },
+    setCapabilityValue: async (cap, value) => ambientCalls.push([cap, value]),
+  };
+  const devices = { bulb, lux: sensor, sky };
+  if (opts.secondLight) {
+    devices.strip = strip;
+  }
   const app = fakeApp({
     zones: { salon: { id: "salon", name: "Salon", parent: null } },
-    devices: { bulb, lux: sensor, sky },
+    devices,
+    roles: opts.roles,
     variables: {
       b: {
         id: "b",
@@ -1414,7 +1437,7 @@ function daylightApp(config) {
   app.homey.clearInterval = (id) => {
     timers[id - 1] = null;
   };
-  return { app, calls, instances, timers, sensor, bulb };
+  return { app, calls, ambientCalls, instances, timers, sensor, bulb };
 }
 
 const salonRoom = { id: "salon", name: "Salon" };
@@ -1663,4 +1686,151 @@ test("the settings page reports no modelled reading at all when Homey has no loc
   const { app } = daylightApp({ geolocation: null });
   await app.buildRoomLightsZones();
   assert.strictEqual((await app.getRoomDefaultsPage()).modelled, null);
+});
+
+// Anchors above every illuminance the sky can produce, so the answer does not
+// depend on what time the suite happens to run. What it pins down is that the
+// modelled branch is consulted at all and yields a usable number: were it to
+// return nothing, the room would fall back to a bare 0.5.
+test("a modelled room's brightness really does come from the model", async () => {
+  const { app, calls } = daylightApp({
+    daylight: { salon: { source: "modelled", dark: 1e9, bright: 1e10, swing: 0.2 } },
+    weatherDevice: "sky",
+  });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.strictEqual(calls.length, 2);
+  near(calls[1][1], 0.7, 1e-9, "every real sky is below a 10^9 lux dark anchor");
+});
+
+// The deadband must be measured against what was last *written*, not against
+// the last value computed. Carrying the skipped target forward would let a room
+// drift a deadband per tick and never write again — daylight tracking would
+// simply stop working on any day the light moves slowly, which is most of them.
+test("small steps that add up still eventually move the lights", async () => {
+  const { app, calls, sensor } = daylightApp({ lux: 10 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  calls.length = 0;
+
+  for (const reading of [12, 14]) {
+    sensor.capabilitiesObj.measure_luminance.value = reading;
+    await app.reviewDaylight("salon");
+    assert.deepStrictEqual(calls, [], `${reading} lx is still inside the deadband`);
+  }
+
+  sensor.capabilitiesObj.measure_luminance.value = 17;
+  await app.reviewDaylight("salon");
+  assert.strictEqual(calls.length, 2, "10 to 17 lx is not, and must be applied");
+});
+
+test("a review keeps the role and state filter the card was run with", async () => {
+  const { app, calls, ambientCalls, sensor } = daylightApp({
+    lux: 10,
+    secondLight: true,
+    roles: { strip: "ambient" },
+  });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, { role: "main" });
+  calls.length = 0;
+  ambientCalls.length = 0;
+
+  sensor.capabilitiesObj.measure_luminance.value = 90;
+  await app.reviewDaylight("salon");
+  assert.strictEqual(calls.length, 2, "the lights the card included are still corrected");
+  assert.deepStrictEqual(ambientCalls, [], "a light the card excluded must not be swept in later");
+});
+
+// The read that arms is a second round-trip: the write in between invalidates
+// the cache. It can therefore fail on its own, after the lights are already
+// where they were asked to go.
+test("a failed device read while arming neither fails the card nor strands a dead tracker", async () => {
+  const { app, calls, instances } = daylightApp({});
+  await app.buildRoomLightsZones();
+
+  const readDevices = app.homeyApi.devices.getDevices;
+  let reads = 0;
+  app.homeyApi.devices.getDevices = async () => {
+    reads += 1;
+    if (reads === 2) throw new Error("hub round-trip failed");
+    return readDevices();
+  };
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.5]], "the lights still went where asked");
+  assert.strictEqual(app.daylightTracking.size, 0, "an entry with no listener would block every later arm");
+
+  app.homeyApi.devices.getDevices = readDevices;
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.strictEqual(instances.made, 1, "and the next run must still be able to arm");
+});
+
+test("a stop card during the arming read destroys the subscription instead of orphaning it", async () => {
+  const { app, instances } = daylightApp({});
+  await app.buildRoomLightsZones();
+
+  const readDevices = app.homeyApi.devices.getDevices;
+  let reads = 0;
+  app.homeyApi.devices.getDevices = async () => {
+    reads += 1;
+    // Lands while armDaylight is awaiting, so it cannot see the instance that
+    // is about to exist.
+    if (reads === 2) app.stopDaylightTracking({ id: "salon" });
+    return readDevices();
+  };
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.strictEqual(instances.made, 1);
+  assert.strictEqual(instances.destroyed, 1, "nothing else could ever have released it");
+  assert.strictEqual(app.daylightTracking.size, 0);
+});
+
+test("a rebuild during the arming read leaves nothing listening", async () => {
+  const { app, instances } = daylightApp({});
+  await app.buildRoomLightsZones();
+
+  const readDevices = app.homeyApi.devices.getDevices;
+  let reads = 0;
+  app.homeyApi.devices.getDevices = async () => {
+    reads += 1;
+    if (reads === 2) app.disarmAllDaylight();
+    return readDevices();
+  };
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.strictEqual(instances.destroyed, 1);
+  assert.strictEqual(app.daylightTracking.size, 0);
+});
+
+// The equation of time is worth a quarter of an hour, and a model that dropped
+// it entirely would still pass a single sunrise check. These two dates sit near
+// its opposite extremes; the latitude is the equator so the peak is sharp.
+test("solar noon lands where the equation of time puts it", () => {
+  const solarNoon = (month, day) => {
+    let best = null;
+    let highest = -2;
+    for (let minute = 600; minute <= 840; minute += 1) {
+      const sine = daylight.sinSolarElevation(0, 0, new Date(Date.UTC(2026, month, day, 0, minute)));
+      if (sine > highest) {
+        highest = sine;
+        best = minute;
+      }
+    }
+    return best;
+  };
+  near(solarNoon(1, 11), 12 * 60 + 14, 4, "11 February, the sun about 14 min behind the clock");
+  near(solarNoon(10, 3), 11 * 60 + 44, 4, "3 November, about 16 min ahead of it");
+});
+
+// Declination amplitude and its harmonics: a model that flattened the seasons
+// would also pass a single August check.
+test("the solstices reach the elevations the Earth's tilt implies", () => {
+  const highestElevation = (month, day) => {
+    let highest = -1;
+    for (let minute = 0; minute <= 1439; minute += 1) {
+      const at = new Date(Date.UTC(2026, month, day, 0, minute));
+      const sine = daylight.sinSolarElevation(GEMBLOUX.latitude, GEMBLOUX.longitude, at);
+      if (sine > highest) highest = sine;
+    }
+    return (Math.asin(highest) * 180) / Math.PI;
+  };
+  near(highestElevation(5, 21), 90 - 50.56 + 23.44, 1, "June solstice at Gembloux");
+  near(highestElevation(11, 21), 90 - 50.56 - 23.44, 1, "December solstice at Gembloux");
 });
