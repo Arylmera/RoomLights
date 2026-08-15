@@ -16,17 +16,23 @@ end up pumping.
 
 Six rooms report `measure_luminance`, all of them Philips Hue motion sensors:
 
-| Room | Device | Reading at design time |
-|---|---|---|
-| Bureau | Occupency bureau | 10 lx |
-| Chambre | Occupancy Chambre | 10 lx |
-| Salle de bain | Occupancy Salle de bain | 100 lx |
-| Toilette | Occupancy Toilettes | 22 lx |
-| Hall d'entrée | Occupancy Hall d'entrée | 26 lx |
-| Hall de nuit | Occupancy Hall de nuit | 15 lx |
+| Room | Device | First reading | Two hours later |
+|---|---|---|---|
+| Bureau | Occupency bureau | 10 lx | 13 lx |
+| Chambre | Occupancy Chambre | 10 lx | 11 lx |
+| Salle de bain | Occupancy Salle de bain | 100 lx | 155 lx |
+| Toilette | Occupancy Toilettes | 22 lx | 1 lx |
+| Hall d'entrée | Occupancy Hall d'entrée | 26 lx | 21 lx |
+| Hall de nuit | Occupancy Hall de nuit | 15 lx | 14 lx |
 
 Salon, Salle à manger and Cuisine have none — their presence sensors report
 `alarm_motion` only.
+
+The Toilette column is the warning in the table. Twenty-two lux to one, over a
+couple of hours on the same overcast day, is not daylight — it is a door. Rooms
+whose reading is dominated by whether a door stands open will produce a
+daylight signal that is mostly noise, and are best left with no lux source
+until someone has watched a week of their Insights.
 
 Twenty-four hours of Insights from the Bureau sensor sets the scale. It floors
 at exactly `1.0` overnight and peaks at `29.7` at 16:40 UTC on 2026-08-14.
@@ -107,15 +113,27 @@ Latitude and longitude come from `this.homey.geolocation`, which needs the
 `homey:manager:geolocation` permission added to `app.json`.
 
 Cloudiness comes from a weather device named in settings, not hard-coded. It is
-dropped, leaving a clean elevation-only curve, when no device is mapped or when
-the mapped capability's `lastUpdated` is stale.
+dropped, leaving a clean elevation-only curve, whenever the term cannot be
+trusted: no device mapped, a stored id that no longer resolves, a device that no
+longer exposes `measure_cloudiness`, or a value whose `lastUpdated` is stale.
 
-That last clause is not hypothetical. The house's `Gembloux Weather` device is
-currently frozen: its `forecast_time` reads `07/23/2026`, its sunrise and sunset
-of `05:55` / `21:39` are late-July values for a mid-August date, and its
-`measure_ultraviolet` Insights log has been flat zero across the whole morning
-while the device state claims `3.2`. A modelled source that trusted it blindly
-would be worse than no daylight at all.
+None of those clauses is hypothetical. The house's `Gembloux Weather` device was
+frozen for three weeks — `forecast_time` reading `07/23/2026`, a late-July
+sunrise and sunset against a mid-August date, and a `measure_ultraviolet` log
+flat at zero all morning while the device state claimed `3.2`. It has since been
+replaced, and the replacement is healthy: `forecast_time 08/15/2026 12:00`,
+`sunrise 06:29 / sunset 21:02`, `measure_cloudiness 97` under light rain.
+
+The replacement is the more instructive event. It arrived with a **new device
+id** and a different class, and it **no longer exposes `measure_ultraviolet` at
+all** — so a design that had leaned on UV would now be broken outright, and one
+that stored the old id would be silently reading nothing. Weather devices are
+re-paired and swapped in a way room sensors are not. The degradation path is
+load-bearing, not a courtesy.
+
+For the same reason the settings picker offers devices by **capability** —
+anything exposing `measure_cloudiness` — rather than by class or name.
+`Gembloux Weather` moved from class `other` to class `sensor` across the swap.
 
 Modelled rooms are open-loop by construction. They cannot see the lamps, so
 they need neither the swing bound nor the deadband for stability — those apply
@@ -159,12 +177,19 @@ one read; it gains the lux-capable device list and the current daylight map, and
 the write stays symmetric.
 
 Per room: a lux source (none, a device, or modelled), a dark anchor, a bright
-anchor, and a swing. Globally: the weather device supplying cloudiness.
+anchor, and a swing. Globally: the weather device supplying cloudiness, chosen
+from the devices exposing `measure_cloudiness`.
 
 Validation mirrors `setRoomDefaults`. Unknown rooms are dropped, a device id
-that no longer exposes `measure_luminance` is dropped, and a room whose anchors
-do not validate is stored without daylight rather than stored broken. Rooms are
-pruned by the existing `pruneByRoom` call.
+that no longer exposes `measure_luminance` is dropped, a weather id that no
+longer exposes `measure_cloudiness` is dropped, and a room whose anchors do not
+validate is stored without daylight rather than stored broken. Rooms are pruned
+by the existing `pruneByRoom` call.
+
+The page shows each source's current reading next to its anchors. Choosing a
+dark and a bright anchor blind is the one part of this a person cannot do from
+the settings page alone, and the alternative is a round trip through Insights
+for every room.
 
 A room with no lux source behaves exactly as it does today. That is the same
 opt-in posture as roles: an unconfigured app is unchanged.
@@ -196,7 +221,11 @@ pure, which is most of why they are shaped this way:
 - a zero reading does not produce a non-finite target
 - solar elevation matches a known position for a fixed date, latitude and
   longitude
-- modelled lux ignores cloudiness when the weather capability is stale
+- modelled lux ignores cloudiness when the weather capability is stale, when the
+  stored weather id resolves to nothing, and when the resolved device has no
+  `measure_cloudiness` — each falling back to the elevation-only curve rather
+  than to zero
+- modelled lux is zero below the horizon and never negative
 - a target within the deadband of the last written value writes nothing
 - a room with no lux source takes the circadian value untouched
 - `offBelow` still turns the room off when the daylight-adjusted target falls
@@ -230,6 +259,12 @@ Capability instances have to be destroyed when a room disarms and when
 device object that no longer exists. `watchForChanges` currently subscribes once
 at start-up and never unsubscribes, which is correct for its two managers but is
 not a pattern this can copy.
+
+Rain is not modelled. The replacement weather device reports `measure_rain` and
+a `conditioncode`, and 97% cloud with light rain is genuinely darker than 97%
+cloud without it. Folding that in means fitting a second coefficient against a
+signal nobody has plotted yet, so cloudiness carries the whole term until a
+room's anchors demonstrably cannot absorb the difference.
 
 The Bureau sensor floors at exactly `1.0`, never `0`. Whether that is the
 sensor, the Hue bridge or the Homey driver is unknown, and it matters only
