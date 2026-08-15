@@ -4,8 +4,10 @@ const Homey = require("homey");
 const { HomeyAPI } = require("homey-api");
 const {
   MODELLED_SOURCE,
+  MODE_HOLD,
   daylightBrightness,
   modelledLux,
+  setpointBrightness,
   validDaylight,
 } = require("./lib/daylight");
 
@@ -620,7 +622,7 @@ class RoomLights extends Homey.App {
   // two can never drift apart on what a room's automatic brightness means.
   async applyRoomAuto(room, options) {
     const { brightness, temperature } = await this.roomDefaultValues(room);
-    const target = await this.daylightAdjusted(room, brightness);
+    const target = await this.daylightAdjusted(room, brightness, null);
     await this.setLightsBrightness(room, target, temperature, options);
     return target;
   }
@@ -715,12 +717,25 @@ class RoomLights extends Homey.App {
   // The circadian brightness, moved by daylight. A room with no daylight
   // configured — and a room whose reading cannot be had — gets the circadian
   // value untouched, which is what it got before this feature existed.
-  async daylightAdjusted(room, circadian) {
+  //
+  // `commanded` is what this app last wrote to the room, and only the hold loop
+  // uses it: it steps from where it left off. Null means a cold start, where
+  // the step is taken from the circadian value — so the room lands where it
+  // would have landed anyway and is corrected from there, never dark while it
+  // settles.
+  async daylightAdjusted(room, circadian, commanded) {
     const config = this.roomDaylight(room.id);
     if (config == null) {
       return circadian;
     }
-    return daylightBrightness(circadian, await this.daylightLux(config), config);
+    const lux = await this.daylightLux(config);
+    if (config.mode === MODE_HOLD) {
+      // The target rides the circadian variable, so the room still dims through
+      // the evening: fullLux is what the sensor reads with the room fully lit.
+      const base = commanded == null ? circadian : commanded;
+      return setpointBrightness(base, lux, config.fullLux * circadian);
+    }
+    return daylightBrightness(circadian, lux, config);
   }
 
   // Start correcting a room as its daylight moves. A sensor room rides the
@@ -873,13 +888,18 @@ class RoomLights extends Homey.App {
     }
 
     const { brightness, temperature } = await this.roomDefaultValues(entry.room);
-    const target = await this.daylightAdjusted(entry.room, brightness);
+    const target = await this.daylightAdjusted(entry.room, brightness, entry.lastWritten);
 
     // Those awaits are real round-trips, and a stop card or a rebuild during
     // one must win.
     if (this.daylightTracking.get(roomId) !== entry) {
       return;
     }
+    // A hold room inside its own deadband returns the level it is already at,
+    // so this catches it too; and the smallest step it can take when outside
+    // one — gain 0.4 across a 0.08-decade deadband — is 0.032, which clears
+    // this 0.03. The two thresholds are sized so convergence cannot stall
+    // between them.
     if (entry.lastWritten != null && Math.abs(target - entry.lastWritten) <= DAYLIGHT_DEADBAND) {
       return;
     }

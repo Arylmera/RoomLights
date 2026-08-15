@@ -5,7 +5,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 | | |
 |---|---|
 | App ID | `inc.lemer.roomLights` |
-| Version | 1.4.0 |
+| Version | 1.5.0 |
 | Homey SDK | 3 |
 | Compatibility | Homey `>=12.9.0`, platform `local` |
 | Category | lights |
@@ -61,18 +61,37 @@ The reason it exists: a circadian formula reaches "dark" as a small float far mo
 
 The third section of the page lets a room's automatic brightness follow the light it already has: brighter outside, dimmer lamps, and the other way round. Rooms left unset behave exactly as before, so this changes nothing until you configure it.
 
-Each room picks a **source**, then two lux **anchors** and a **swing**:
+Each room picks a **source** and then one of two **modes**.
 
-| Field | Meaning |
+#### Hold a level — the default
+
+One number: **Full brightness (lux)**, what the room's sensor reads when the room is fully lit. The target rides the circadian variable from there, `target = fullLux × brightness`, so the room still dims through the evening.
+
+Each re-evaluation compares the reading against that target and steps the lamps toward it. The lamps' own contribution never appears in the arithmetic — convergence discovers it, which is why nothing needs calibrating and nothing goes stale when a lamp moves.
+
+The cost is **settling time**. Convergence takes several reports, and a Hue sensor reports every five minutes, so expect fifteen to thirty minutes from a cold start. The room is never dark while it settles: the card writes the circadian brightness first, exactly as it always did, and correction starts from there.
+
+#### Follow the daylight
+
+Two lux **anchors** and a **swing**. At or below **Dark** the room runs at *mapped brightness + swing*; at or above **Bright**, *mapped brightness − swing*. In between it's interpolated on `log10(lux)`, matching both the Zigbee illuminance encoding (`10000·log10(lux)+1`) and human brightness perception — a linear interpolation would spend almost its whole range on the top decade. At the **geometric mean** of the anchors the mapped brightness passes through untouched.
+
+No settling and no defined level. Use it where the room must be right immediately.
+
+#### What level is the right level
+
+Published guidance is consistent:
+
+| Room | Recommended |
 |---|---|
-| **Daylight from** | *None*, any device exposing `measure_luminance`, or *Modelled daylight* |
-| **Dark (lux)** | At or below this reading the room runs at *mapped brightness + swing* |
-| **Bright (lux)** | At or above this reading it runs at *mapped brightness − swing* |
-| **Swing (%)** | How far daylight may move the mapped brightness, either way |
+| Kitchen worktop, office desk | 300–500 lx |
+| Living room | 150–300 lx |
+| Bathroom | 150 lx general, 400 lx at the mirror |
+| Bedroom | 100–150 lx general, 300 lx for reading |
+| Hall, stairs | 100–150 lx |
 
-Between the anchors the value is interpolated on `log10(lux)`, which matches both the Zigbee illuminance encoding (`10000·log10(lux)+1`) and human brightness perception — a linear interpolation would spend almost its whole range on the top decade. At the **geometric mean** of the two anchors the mapped brightness passes through untouched, so the anchors describe the extremes and the middle stays exactly as you configured it elsewhere.
+**None of those numbers goes in the box.** Every one is measured *at the task* — on the desk, the worktop, the floor. These sensors are on ceilings and walls and read light reflected back off the room, a small fraction of it: Bureau reads 3–30 lx while its desk is certainly in the hundreds. The daylight-harvesting literature is explicit that a ceiling sensor is closer to measuring luminance than illuminance, and treating one as the other is how these systems misbehave. Nothing in software bridges the two without a handheld meter.
 
-Every source is listed with its current reading, because choosing anchors is the one part of this the page cannot do for you.
+So use the table to judge whether a room's *full brightness* is set sensibly, then light it that way and press **Measure**. The button re-reads the sensor and writes what it actually says. Every source is also listed with its live reading, for the same reason.
 
 **Sources.** A room may point at any lux device, not only one in that room — pointing several rooms at a single well-placed sensor is a perfectly good configuration, and anchors are per-room so each still gets its own curve. *Modelled daylight* is computed instead of measured, from the sun's position (Homey's own coordinates plus the NOAA solar-position algorithm) scaled by the cloud cover of a weather device you name once, globally:
 
@@ -82,9 +101,13 @@ lux ≈ 120000 · sin(solar elevation) · (1 − 0.75 · cloudiness/100)
 
 The cloudiness term is dropped — leaving a clear-sky curve, never darkness — when no weather device is mapped, when the stored one no longer resolves or no longer exposes `measure_cloudiness`, or when its reading is more than three hours old. That last case is not hypothetical: the house this was built against had a weather device sit frozen for three weeks while still answering with an entirely plausible number.
 
-**Why the swing is bounded.** A sensor sitting in the room it lights sees its own lamps, which is a closed loop and the classic configuration for *hunting*: lamps brighten, the sensor reads more light, the controller dims, the sensor reads less. Clamping beyond the anchors bounds daylight's authority, which holds the loop gain below one, and a 3 % deadband keeps small corrections off the Zigbee mesh entirely. Modelled daylight has no feedback path at all — it cannot see your lamps — so it is stable whatever you set.
+**Why neither mode hunts.** A sensor sitting in the room it lights sees its own lamps, which is a closed loop and the classic configuration for *hunting*: lamps brighten, the sensor reads more light, the controller dims, the sensor reads less.
 
-That argument assumes the anchors sit **at least a decade apart**. The closer they are, the more brightness moves per lux, and a narrow span with a large swing is the one configuration that can sustain a cycle. Nothing clamps what you type — you may well mean it — but the settings page says so when a room's anchors are less than tenfold apart with a swing above 25 %.
+*Follow* bounds it by clamping beyond the anchors, which holds the loop gain below one, plus a 3 % deadband that keeps small corrections off the mesh. That argument assumes the anchors sit **at least a decade apart** — the closer they are, the more brightness moves per lux, and a narrow span with a large swing is the one configuration that can sustain a cycle. Nothing clamps what you type, but the settings page says so when a room's anchors are less than tenfold apart with a swing above 25 %.
+
+*Hold* contracts while `gain × s < 2`, where `s` is how many decades of measured light a full sweep of the dimmer is worth. A lamp-dominated room is worth about 1.5, and the gain of 0.4 stays contracting up to `s = 5` — past anything a real room does. A per-tick cap of 0.15 bounds a mis-estimated room to a walk rather than a jump. Integration happens on the output and the output is clamped to 0–1, so that clamp *is* the anti-windup: there's no accumulator to run away, and a target the lamps can't reach saturates at full instead of winding up behind it.
+
+Modelled daylight has no feedback path at all — it cannot see your lamps — so it's stable whatever you set. It also cannot *hold* anything, for the same reason, so that combination is refused.
 
 **Tracking.** [`setroomlightsauto`](#setroomlightsauto) on a room with a source doesn't just apply a value, it starts *tracking*: the room keeps being corrected as the light moves, on the sensor's own reporting cadence (five minutes for a Hue sensor) or on a five-minute timer for a modelled room. Tracking stops when every non-excluded light in the room is off, when [`stopdaylighttracking`](#stopdaylighttracking) runs, when the settings are saved, or when the zone map rebuilds. It is held in memory only, so restarting the app clears it and the next automatic card re-arms it.
 
@@ -267,11 +290,11 @@ Roles are read from settings on every card run rather than baked into `myHome`, 
 | `setLightsBrightness()` / `setLightsColors()` / `setRoomLightsColors()` | Back the brightness and colour set-cards |
 | `setRoomLightsAuto(room, options)` | Backs the automatic card: apply the room's automatic brightness, then arm daylight tracking |
 | `applyRoomAuto(room, options)` | **async.** The mapped values, moved by daylight, written to the room. Shared by the card and by every re-evaluation, so the two cannot drift apart |
-| `daylightSettings()` / `roomDaylight(roomId)` | The room → `{ source, dark, bright, swing }` map from app settings, and one room's entry after validation (`null` when unusable) |
+| `daylightSettings()` / `roomDaylight(roomId)` | The room → daylight map from app settings, and one room's entry after validation (`null` when unusable). Each mode keeps only its own fields — `{ mode, source, fullLux }` or `{ mode, source, dark, bright, swing }` — so a stale anchor cannot come back later and change what a room does. An entry with no `mode` at all predates the hold mode and keeps following |
 | `geolocation()` | The house's latitude and longitude, or `null` on a Homey that cannot answer — needs the `homey:manager:geolocation` permission |
 | `capabilityReading(deviceId, capabilityId)` | **async.** A numeric capability value with the age of the reading, or `null` for any way a stored device id stops meaning anything |
 | `cloudiness()` | **async.** The cloud-cover percentage to scale the clear sky by, or `null` to drop the term (unmapped, unresolvable, capability gone, or stale) |
-| `daylightLux(config)` / `daylightAdjusted(room, circadian)` | **async.** The room's daylight reading in lux, and the circadian brightness after it has been moved |
+| `daylightLux(config)` / `daylightAdjusted(room, circadian, commanded)` | **async.** The room's daylight reading in lux, and the circadian brightness after it has been moved. `commanded` is what the app last wrote and only the hold loop uses it, stepping from where it left off; `null` means a cold start, where the step is taken from the circadian value |
 | `armDaylight()` / `disarmDaylight()` / `disarmAllDaylight()` | Start and stop correcting a room: a capability subscription for a sensor source, a timer for a modelled one. Re-arming the same source does not stack a second listener, and a sensor that cannot be reached is logged rather than failing the card — the lights are already where they were asked to go |
 | `reviewDaylight(roomId)` / `runDaylightReview()` | **async.** One re-evaluation: disarm if the room is dark, otherwise recompute and write, unless the change is inside the deadband. A review already running holds the room, so a sensor report landing mid-write steps aside rather than racing it; the level is recorded only once the write has gone out, so a failed one is retried instead of being swallowed by the deadband |
 | `stopDaylightTracking(room)` | Backs the stop card |

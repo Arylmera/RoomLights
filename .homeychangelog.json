@@ -17,5 +17,9 @@
   "1.4.0": {
     "en": "Rooms can now follow the daylight they already have. Point a room at a light sensor — or at modelled daylight, computed from the sun's position and cloud cover — and the automatic card raises its brightness on a dark day and lowers it on a bright one, then keeps correcting as the light moves. New card: stop daylight tracking, for mood Flows.",
     "fr": "Les pièces peuvent désormais suivre la lumière du jour qu'elles reçoivent déjà. Associez une pièce à un capteur de luminosité — ou à la lumière du jour modélisée, calculée d'après la position du soleil et la nébulosité — et la carte automatique augmente la luminosité les jours sombres, la réduit les jours clairs, puis continue de corriger à mesure que la lumière change. Nouvelle carte : arrêter le suivi de la lumière du jour, pour les Flows d'ambiance."
+  },
+  "1.5.0": {
+    "en": "A room can now hold a measured level instead of following the daylight: say what its sensor reads when the room is fully lit, and it converges there and stays. Light sensors sit in the rooms they light, which is what holding a level is actually good for, so it is the new default. Following the daylight is still there for a room that has to be right immediately.",
+    "fr": "Une pièce peut désormais maintenir un niveau mesuré au lieu de suivre la lumière du jour : indiquez ce que son capteur mesure lorsque la pièce est pleinement éclairée, et elle y converge puis s'y tient. Les capteurs se trouvent dans les pièces qu'ils éclairent, ce à quoi le maintien d'un niveau correspond vraiment : c'est le nouveau mode par défaut. Suivre la lumière du jour reste disponible pour une pièce qui doit être juste immédiatement."
   }
 }

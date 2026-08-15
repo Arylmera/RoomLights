@@ -1292,7 +1292,10 @@ test("unusable anchors disable daylight for the room rather than dividing by zer
   for (const entry of broken) {
     assert.strictEqual(daylight.validDaylight(entry), null, JSON.stringify(entry));
   }
-  assert.deepStrictEqual(daylight.validDaylight(anchors), anchors);
+  // An entry stored before hold existed carries no mode and must keep
+  // following: an upgrade may not change the control law under a room that was
+  // already working.
+  assert.deepStrictEqual(daylight.validDaylight(anchors), { mode: "follow", ...anchors });
 });
 
 // Ground truth from the house's own weather device: Gembloux on 2026-08-15
@@ -1633,7 +1636,7 @@ test("setRoomDefaults keeps daylight only for known rooms with a source that sti
     },
   });
   assert.deepStrictEqual(Object.keys(saved.daylight), ["salon"]);
-  assert.deepStrictEqual(saved.daylight.salon, sensorAnchors);
+  assert.deepStrictEqual(saved.daylight.salon, { mode: "follow", ...sensorAnchors });
 });
 
 // "bulb" is a real device that has never measured light. A weather device
@@ -1852,6 +1855,124 @@ test("a write that fails outright is retried rather than swallowed by the deadba
   bulb.setCapabilityValue = write;
   await app.reviewDaylight("salon");
   assert.strictEqual(calls.length, 2, "a level the room never reached must not suppress the retry");
+});
+
+// ------------------------------------------------------------- holding a level
+
+const holdConfig = { mode: "hold", source: "lux", fullLux: 40 };
+
+test("a hold room raises the command when it is too dark and lowers it when too bright", () => {
+  assert.ok(daylight.setpointBrightness(0.5, 5, 20) > 0.5);
+  assert.ok(daylight.setpointBrightness(0.5, 40, 20) < 0.5);
+  assert.strictEqual(daylight.setpointBrightness(0.5, 20, 20), 0.5);
+});
+
+test("a hold step is capped however wrong the room is", () => {
+  near(daylight.setpointBrightness(0.5, 0.001, 100000), 0.65, 1e-9, "capped climbing");
+  near(daylight.setpointBrightness(0.5, 100000, 0.5), 0.35, 1e-9, "capped falling");
+});
+
+// The clamp on the output is also the anti-windup: there is no accumulator, so
+// a target the lamps cannot reach sits at full rather than winding up behind it.
+test("a hold step clamps to 0-1 and a zero reading stays finite", () => {
+  assert.strictEqual(daylight.setpointBrightness(1, 0, 1000), 1);
+  assert.strictEqual(daylight.setpointBrightness(0, 1000, 1), 0);
+  assert.ok(Number.isFinite(daylight.setpointBrightness(0.5, 0, 10)));
+});
+
+test("a reading inside the hold deadband leaves the room alone", () => {
+  assert.strictEqual(daylight.setpointBrightness(0.5, 20, 22), 0.5, "10% is jitter, not a change");
+  assert.ok(daylight.setpointBrightness(0.5, 20, 26) > 0.5, "30% is a change");
+});
+
+// The two thresholds are sized so convergence cannot stall between them: the
+// smallest step the loop can take is gain x deadband = 0.032, and the app skips
+// a write only below 0.03.
+test("the smallest hold step is still large enough to be written", () => {
+  const justOutside = 20 * Math.pow(10, daylight.HOLD_DEADBAND_DECADES + 1e-9);
+  const step = daylight.setpointBrightness(0.5, 20, justOutside) - 0.5;
+  assert.ok(step > 0.03, `the smallest step ${step} must clear the write deadband`);
+});
+
+// A model room: daylight the lamps cannot change, plus a lamp contribution
+// proportional to the command. The loop is told none of this — it discovers it.
+function simulateHold(target, ambient, lampsAtFull, start, steps) {
+  const history = [];
+  let dim = start;
+  for (let i = 0; i < steps; i += 1) {
+    dim = daylight.setpointBrightness(dim, ambient + lampsAtFull * dim, target);
+    history.push(dim);
+  }
+  return history;
+}
+
+test("a hold room converges on its target and comes to rest", () => {
+  const history = simulateHold(15, 2, 40, 0.5, 25);
+  const settled = history[history.length - 1];
+  near(2 + 40 * settled, 15, 15 * 0.2, "settles within the deadband of the target");
+  assert.strictEqual(history[24], history[23], "and stops rather than orbiting it");
+});
+
+test("a target the lamps cannot reach saturates instead of winding up", () => {
+  const history = simulateHold(500, 2, 40, 0.5, 20);
+  assert.strictEqual(history[history.length - 1], 1);
+});
+
+test("hold needs a sensor and a full-brightness reading", () => {
+  assert.deepStrictEqual(daylight.validDaylight(holdConfig), holdConfig);
+  assert.strictEqual(
+    daylight.validDaylight({ ...holdConfig, source: "modelled" }),
+    null,
+    "the model never sees the room, so there is no feedback to converge on"
+  );
+  for (const bad of [undefined, null, 0, -5, 0.05, "40", NaN]) {
+    assert.strictEqual(daylight.validDaylight({ ...holdConfig, fullLux: bad }), null, String(bad));
+  }
+});
+
+test("hold keeps only its own fields, so a stale anchor cannot come back", () => {
+  assert.deepStrictEqual(
+    daylight.validDaylight({ ...holdConfig, dark: 1, bright: 100, swing: 0.9 }),
+    holdConfig
+  );
+});
+
+test("a hold room starts from the circadian brightness and steps toward its target", async () => {
+  // fullLux 40 at circadian 0.5 is a target of 20 lx; the sensor reads 5, so
+  // the room is short and the first write is above the circadian value.
+  const { app, calls } = daylightApp({ lux: 5, daylight: { salon: { ...holdConfig } } });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.strictEqual(calls.length, 2);
+  assert.ok(calls[1][1] > 0.5, "a room below its target comes up, never down");
+  assert.ok(calls[1][1] <= 0.65 + 1e-9, "and never by more than one capped step");
+});
+
+test("a hold room converges across successive readings and then stops", async () => {
+  const { app, calls, sensor } = daylightApp({ lux: 5, daylight: { salon: { ...holdConfig } } });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  const first = calls[calls.length - 1][1];
+
+  calls.length = 0;
+  sensor.capabilitiesObj.measure_luminance.value = 12;
+  await app.reviewDaylight("salon");
+  assert.ok(calls[calls.length - 1][1] > first, "still short of 20 lx, so it keeps climbing");
+
+  calls.length = 0;
+  sensor.capabilitiesObj.measure_luminance.value = 20;
+  await app.reviewDaylight("salon");
+  assert.deepStrictEqual(calls, [], "at the target it stops");
+});
+
+test("a hold room cannot be saved against modelled daylight", async () => {
+  const { app } = daylightApp({ daylight: {} });
+  await app.buildRoomLightsZones();
+  const saved = await app.setRoomDefaults({
+    mappings: {},
+    daylight: { salon: { ...holdConfig, source: "modelled" } },
+  });
+  assert.deepStrictEqual(saved.daylight, {});
 });
 
 // The equation of time is worth a quarter of an hour, and a model that dropped

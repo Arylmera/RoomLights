@@ -134,29 +134,62 @@
       td.pick {
         padding: 5px 0 5px 8px;
       }
-      td.num {
-        padding: 5px 0 5px 8px;
-        width: 14%;
+      /* Daylight is a block per room rather than a table row: the two modes
+         carry different fields, and one header row could only ever label one of
+         them. Each field carries its own label, which also means this layout
+         needs no separate narrow-screen rules — the fields simply wrap. */
+      .dayroom {
+        border-bottom: 1px solid var(--line-soft);
+        padding: 10px 0 12px;
       }
-      td.num input {
-        font: inherit;
+      .dayroom h4 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--fg);
+        margin: 0 0 7px;
+      }
+      .dayfields {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .dayfield {
+        flex: 1 1 128px;
+        min-width: 0;
+      }
+      .dayfield > span {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--faint);
+        margin: 0 0 3px;
+      }
+      .dayfield input,
+      .dayfield select,
+      .dayfield button {
         width: 100%;
         box-sizing: border-box;
-        text-align: right;
+      }
+      .dayfield input,
+      .dayfield button.measure {
+        font: inherit;
         color: var(--fg);
         background: var(--field-bg);
         border: 1px solid var(--line);
         border-radius: 6px;
-        padding: 6px 8px;
+        padding: 7px 8px;
       }
-      td.num input:focus-visible {
+      .dayfield button.measure {
+        cursor: pointer;
+      }
+      .dayfield button.measure:hover {
+        border-color: var(--faint);
+      }
+      .dayfield input:focus-visible {
         outline: 2px solid var(--fg);
         outline-offset: 1px;
-      }
-      /* The daylight table carries five columns where the defaults table
-         carries three, so its room column has to give way. */
-      table.daylight td.room {
-        width: 26%;
       }
       .threshold select {
         width: auto;
@@ -233,8 +266,7 @@
           padding-top: 10px;
           width: auto;
         }
-        table.defaults td.pick::before,
-        table.defaults td.num::before {
+        table.defaults td.pick::before {
           content: attr(data-label);
           display: block;
           font-size: 11px;
@@ -243,9 +275,6 @@
           letter-spacing: 0.06em;
           color: var(--faint);
           margin: 6px 0 3px;
-        }
-        table.defaults td.num input {
-          text-align: left;
         }
       }
     </style>
@@ -282,10 +311,16 @@
 
     <h1 class="homey-title" data-i18n="daylight.title">Daylight</h1>
     <p class="homey-subtitle intro" data-i18n="daylight.intro">
-      Let the light a room already has move its automatic brightness. Pick where the room reads
-      daylight from, then the two lux values that mean “as dark as it gets” and “as bright as it
-      gets”. Between them the mapped brightness passes through unchanged. Rooms left unset behave
-      exactly as before.
+      Let the light a room already has drive its automatic brightness. Pick where the room reads
+      daylight from, then how it should use it. Rooms left unset behave exactly as before.
+    </p>
+    <p class="homey-subtitle intro" data-i18n="daylight.modeshint">
+      Hold a level aims the room at a measured brightness and converges over about twenty minutes,
+      which is what a sensor sitting in the room is actually good for. Follow the daylight moves the
+      mapped brightness between two readings instead — no waiting, but no defined level either.
+      Published figures (300–500 lux on a worktop, 150–300 in a living room) are measured at the
+      task; a ceiling sensor reads a fraction of them, so light the room the way it should look and
+      press Measure rather than typing a number from a table.
     </p>
     <div class="threshold">
       <label for="weather" data-i18n="daylight.weather">Cloudiness from</label>
@@ -327,15 +362,18 @@
       var loaded = false;
 
       var MODELLED = "modelled";
+      var HOLD = "hold";
+      var FOLLOW = "follow";
 
       // What a room gets the moment a source is first picked, before anyone has
       // read a week of Insights. An indoor sensor and the outdoor model live on
       // completely different scales, so they cannot share one pair: the house's
       // own sensors run 1-155 lx, while modelled outdoor light reaches tens of
-      // thousands.
+      // thousands. The hold seed is a placeholder — Measure is the real answer.
       var SEED = {
         device: { dark: 1, bright: 100, swing: 0.2 },
         modelled: { dark: 200, bright: 20000, swing: 0.2 },
+        hold: { fullLux: 20 },
       };
 
       function onHomeyReady(Homey) {
@@ -671,55 +709,18 @@
           return;
         }
 
-        var labels = ["daylight.source", "daylight.dark", "daylight.bright", "daylight.swing"].map(
-          function (label) {
-            return Homey.__(label);
-          }
-        );
-
-        var table = document.createElement("table");
-        table.className = "defaults daylight";
-        var head = table.insertRow();
-        head.className = "head";
-        head.insertCell().className = "room";
-        labels.forEach(function (label, index) {
-          var cell = head.insertCell();
-          cell.className = index === 0 ? "pick" : "num";
-          var heading = document.createElement("h3");
-          heading.textContent = label;
-          heading.style.margin = "0";
-          cell.appendChild(heading);
-        });
-
         rooms.forEach(function (room) {
-          var row = table.insertRow();
-          var name = row.insertCell();
-          name.className = "room";
-          name.textContent = room.name;
-
-          var source = row.insertCell();
-          source.className = "pick";
-          // Read back by the narrow layout, where the header row is hidden.
-          source.setAttribute("data-label", labels[0]);
-          source.appendChild(sourcePicker(Homey, room));
-
-          ["dark", "bright", "swing"].forEach(function (field, index) {
-            var cell = row.insertCell();
-            cell.className = "num";
-            cell.setAttribute("data-label", labels[index + 1]);
-            cell.appendChild(anchorInput(Homey, room, field));
-          });
+          container.appendChild(roomBlock(Homey, room));
         });
 
-        container.appendChild(table);
-
-        // The stability argument assumes anchors at least a decade apart: the
-        // closer they sit, the more brightness moves per lux, and a sensor that
-        // can see its own lamps then has room to chase them. A configuration
-        // typed on purpose is not clamped, but it is worth saying out loud.
+        // Only follow rooms have anchors to be close together. The stability
+        // argument assumes at least a decade between them: the closer they sit,
+        // the more brightness moves per lux, and a sensor that can see its own
+        // lamps then has room to chase them. Numbers typed on purpose are not
+        // clamped, but they are worth saying out loud.
         var twitchy = rooms.filter(function (room) {
           var entry = daylight[room.id];
-          if (entry == null || entry.source === MODELLED) return false;
+          if (entry == null || entry.mode === HOLD || entry.source === MODELLED) return false;
           if (!(entry.dark > 0) || !(entry.bright > entry.dark)) return false;
           return Math.log(entry.bright / entry.dark) / Math.LN10 < 1 && entry.swing > 0.25;
         });
@@ -745,6 +746,135 @@
           note.textContent = Homey.__("daylight.nogeo");
           container.appendChild(note);
         }
+      }
+
+      function roomBlock(Homey, room) {
+        var entry = daylight[room.id];
+        var block = document.createElement("div");
+        block.className = "dayroom";
+
+        var heading = document.createElement("h4");
+        heading.textContent = room.name;
+        block.appendChild(heading);
+
+        var fields = document.createElement("div");
+        fields.className = "dayfields";
+        fields.appendChild(field(Homey, "daylight.source", sourcePicker(Homey, room)));
+
+        if (entry != null) {
+          fields.appendChild(field(Homey, "daylight.mode", modePicker(Homey, room)));
+          if (entry.mode === HOLD) {
+            fields.appendChild(field(Homey, "daylight.fulllux", anchorInput(Homey, room, "fullLux")));
+            fields.appendChild(field(Homey, null, measureButton(Homey, room)));
+          } else {
+            ["dark", "bright", "swing"].forEach(function (name) {
+              fields.appendChild(field(Homey, "daylight." + name, anchorInput(Homey, room, name)));
+            });
+          }
+        }
+
+        block.appendChild(fields);
+        return block;
+      }
+
+      function field(Homey, labelKey, control) {
+        var wrap = document.createElement("div");
+        wrap.className = "dayfield";
+        var label = document.createElement("span");
+        if (labelKey == null) {
+          // A blank label keeps a button's top edge level with the boxes beside
+          // it, without a second rule for the one case that has no caption.
+          label.innerHTML = "&nbsp;";
+        } else {
+          label.textContent = Homey.__(labelKey);
+        }
+        wrap.appendChild(label);
+        wrap.appendChild(control);
+        return wrap;
+      }
+
+      function modePicker(Homey, room) {
+        var entry = daylight[room.id];
+        var select = document.createElement("select");
+        select.className = "homey-form-select";
+        [
+          { id: HOLD, label: "daylight.hold" },
+          { id: FOLLOW, label: "daylight.follow" },
+        ].forEach(function (mode) {
+          var option = document.createElement("option");
+          option.value = mode.id;
+          option.textContent = Homey.__(mode.label);
+          option.selected = (entry.mode === HOLD ? HOLD : FOLLOW) === mode.id;
+          select.appendChild(option);
+        });
+        // Modelled daylight never sees the room, so there is no feedback and
+        // nothing to hold against — it can only follow.
+        select.disabled = entry.source === MODELLED;
+        select.onchange = function () {
+          seedMode(room, select.value);
+          renderDaylight(Homey);
+          saveDefaults(Homey);
+        };
+        return select;
+      }
+
+      // Each mode owns its own fields, and switching drops the other mode's. A
+      // stale anchor left lying around could otherwise come back later and
+      // quietly change what a room does.
+      function seedMode(room, mode) {
+        var entry = daylight[room.id];
+        if (entry == null) return;
+        if (mode === HOLD) {
+          daylight[room.id] = {
+            mode: HOLD,
+            source: entry.source,
+            fullLux: typeof entry.fullLux === "number" ? entry.fullLux : SEED.hold.fullLux,
+          };
+          return;
+        }
+        var seed = entry.source === MODELLED ? SEED.modelled : SEED.device;
+        daylight[room.id] = {
+          mode: FOLLOW,
+          source: entry.source,
+          dark: typeof entry.dark === "number" ? entry.dark : seed.dark,
+          bright: typeof entry.bright === "number" ? entry.bright : seed.bright,
+          swing: typeof entry.swing === "number" ? entry.swing : seed.swing,
+        };
+      }
+
+      function measureButton(Homey, room) {
+        var button = document.createElement("button");
+        button.className = "measure";
+        button.textContent = Homey.__("daylight.measure");
+        button.onclick = function () {
+          measure(Homey, room);
+        };
+        return button;
+      }
+
+      // Light the room the way it should look, then press this. The published
+      // figures — 300-500 lux on a worktop, 150-300 in a living room — are all
+      // measured at the task, and a sensor on the ceiling reads a fraction of
+      // them, so the only number that belongs in the box is one this sensor
+      // produced itself. Re-read rather than trusting the page's own figure,
+      // which is as old as the last load.
+      function measure(Homey, room) {
+        Homey.api("GET", "/defaults", null, function (err, result) {
+          if (err) return Homey.alert(err);
+          luxSources = (result && result.luxSources) || luxSources;
+          var entry = daylight[room.id];
+          if (entry == null) return;
+          var found = null;
+          luxSources.forEach(function (source) {
+            if (String(source.id) === String(entry.source)) found = source;
+          });
+          if (found == null || typeof found.value !== "number") {
+            return Homey.alert(Homey.__("daylight.unread"));
+          }
+          entry.fullLux = found.value;
+          renderDaylight(Homey);
+          saveDefaults(Homey);
+        });
       }
 
       function sourcePicker(Homey, room) {
@@ -785,11 +915,10 @@
           select.appendChild(missing);
         }
 
-        // Changing the source changes which anchor boxes are usable at all, so
-        // this picker always redraws — unlike the boxes themselves, which must
-        // not, because typing in one saves the one before it. Redrawing here
-        // costs nothing: the choice has just been made and the select is done
-        // with focus.
+        // Changing the source changes which fields exist at all, so this picker
+        // always redraws — unlike the boxes themselves, which must not, because
+        // typing in one saves the one before it. Redrawing here costs nothing:
+        // the choice has just been made and the select is done with focus.
         select.onchange = function () {
           if (!select.value) {
             delete daylight[room.id];
@@ -797,18 +926,30 @@
             return saveDefaults(Homey);
           }
           // A room's own sensor reads single lux; the outdoor model reads tens
-          // of thousands. Anchors carry over between two sensors, but switching
-          // between a sensor and the model reseeds them — keeping 1 and 100 for
+          // of thousands. Values carry over between two sensors, but switching
+          // between a sensor and the model starts over — keeping 1 and 100 for
           // modelled daylight would peg the room at full swing all day.
           var entry = daylight[room.id];
-          var sameKind = entry != null && (entry.source === MODELLED) === (select.value === MODELLED);
-          var seed = select.value === MODELLED ? SEED.modelled : SEED.device;
+          var isModelled = select.value === MODELLED;
+          var kept = entry != null && (entry.source === MODELLED) === isModelled ? entry : {};
+
+          // Hold is the default for a room being configured afresh: it is the
+          // mode an in-room sensor actually suits, and one observation
+          // configures it. A room that already had a mode keeps it — an edit to
+          // its source must not quietly change what the room does — and the
+          // model can only ever follow.
+          var previous = entry == null ? null : entry.mode === HOLD ? HOLD : FOLLOW;
+          var mode = isModelled ? FOLLOW : previous == null ? HOLD : previous;
+
           daylight[room.id] = {
+            mode: mode,
             source: select.value,
-            dark: sameKind ? entry.dark : seed.dark,
-            bright: sameKind ? entry.bright : seed.bright,
-            swing: sameKind ? entry.swing : seed.swing,
+            dark: kept.dark,
+            bright: kept.bright,
+            swing: kept.swing,
+            fullLux: kept.fullLux,
           };
+          seedMode(room, mode);
           renderDaylight(Homey);
           saveDefaults(Homey);
         };
@@ -817,19 +958,18 @@
       }
 
       // Swing is stored as a 0-1 fraction and shown as a percentage, the same
-      // way the off-threshold is. The anchors are lux and are shown as they are.
-      function anchorInput(Homey, room, field) {
+      // way the off-threshold is. Everything else is lux, shown as it is. Only
+      // ever rendered for a room that has an entry, so there is no disabled
+      // state to carry.
+      function anchorInput(Homey, room, name) {
         var entry = daylight[room.id];
-        var swing = field === "swing";
+        var swing = name === "swing";
         var input = document.createElement("input");
         input.type = "number";
         input.min = swing ? 0 : 0.1;
         input.step = swing ? 1 : "any";
         if (swing) input.max = 100;
-        input.disabled = entry == null;
-        if (entry != null) {
-          input.value = swing ? Math.round(entry.swing * 100) : entry[field];
-        }
+        input.value = swing ? Math.round(entry.swing * 100) : entry[name] == null ? "" : entry[name];
         input.onchange = function () {
           var current = daylight[room.id];
           if (current == null) return;
@@ -837,7 +977,7 @@
           // An empty or non-numeric box means "leave it alone", not "zero" —
           // the same rule the off-threshold box follows.
           if (isNaN(parsed)) return renderDaylight(Homey);
-          current[field] = swing ? Math.min(1, Math.max(0, parsed / 100)) : parsed;
+          current[name] = swing ? Math.min(1, Math.max(0, parsed / 100)) : parsed;
           saveDefaults(Homey);
         };
         return input;
