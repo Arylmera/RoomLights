@@ -238,7 +238,9 @@ They run independently, so the spots come up warm and dim while the TV strip goe
 
 [`app.js`](app.js) exports one `Homey.App` subclass and holds everything that talks to Homey. There are no drivers — the app owns no devices of its own, it only drives existing ones.
 
-Beside it, [`lib/daylight.js`](lib/daylight.js) holds the arithmetic that decides how bright a room gets: solar position, modelled illuminance, the lux-to-brightness mapping, and the validation of a stored daylight entry. It imports nothing and touches no Homey API, which is the point — it is the part most worth testing, and its tests need no stub at all.
+Beside it, [`lib/daylight.js`](lib/daylight.js) holds the arithmetic that decides how bright a room gets: solar position, modelled illuminance, the lux-to-brightness mapping, the hold loop, and the validation of a stored daylight entry. It imports nothing and touches no Homey API, which is the point — it is the part most worth testing, and its tests need no stub at all.
+
+The settings page is tested too, through a small stub DOM in [`test/dom.js`](test/dom.js) that evaluates the page's own inline script. The stub is deliberately **strict**: any DOM property the page sets that it has not been taught throws, because a permissive stub is one that can be wrong in the same direction as the code it guards. Its fake server validates a save with the app's real `validDaylight`, so a page that builds something the app would reject fails in the suite rather than in your hands.
 
 ```
 onInit()
@@ -327,7 +329,9 @@ app.json                    GENERATED — do not edit by hand
   flow/actions/*.json       one file per action card
   flow/conditions/*.json    one file per condition card
 .homeychangelog.json        per-version store changelog
-test/app.test.js            node --test suite for the pure logic
+test/app.test.js            node --test suite for the app and the daylight maths
+test/settings.test.js       the settings page, driven through a stub DOM
+test/dom.js                 that DOM, and the harness that evaluates the page
 locales/en.json             settings-page copy (Flow card copy is inline in .homeycompose)
 locales/fr.json             the same, in French
 docs/superpowers/           design specs and implementation plans
