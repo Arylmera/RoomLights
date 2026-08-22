@@ -25,5 +25,9 @@
   "1.6.0": {
     "en": "Colour bulbs now follow the room's white temperature. A bulb with no white channel used to keep whatever colour it was last given while every other lamp in the room warmed through the evening; it is now given the nearest hue and saturation instead, so the whole room stays in step. Bulbs that can set a white temperature themselves are unaffected.",
     "fr": "Les ampoules couleur suivent désormais la température de blanc de la pièce. Une ampoule sans canal blanc conservait la dernière couleur reçue pendant que toutes les autres lampes se réchauffaient au fil de la soirée ; elle reçoit maintenant la teinte et la saturation les plus proches, et la pièce reste homogène. Les ampoules capables de régler elles-mêmes une température de blanc ne changent pas."
+  },
+  "1.6.1": {
+    "en": "Colour bulbs matching the room's white temperature came out too pale beside the bulbs they were matching, because an unsaturated colour bulb is a colder white than a white bulb's phosphor. The mapping now runs warmer and reads as it should.",
+    "fr": "Les ampoules couleur reproduisant la température de blanc de la pièce ressortaient trop pâles à côté des ampoules qu'elles imitaient, une ampoule couleur désaturée donnant un blanc plus froid que le phosphore d'une ampoule blanche. La conversion est désormais plus chaude et rend ce qu'elle devrait."
   }
 }

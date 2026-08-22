@@ -1,6 +1,6 @@
 {
 	"id": "inc.lemer.roomLights",
-	"version": "1.6.0",
+	"version": "1.6.1",
 	"compatibility": ">=12.9.0",
 	"sdk": 3,
 	"platforms": ["local"],

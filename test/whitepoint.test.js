@@ -5,13 +5,17 @@ const assert = require("node:assert");
 
 const { temperatureToHueSaturation } = require("../lib/whitepoint");
 
-test("the cold end is white, the warm end is amber", () => {
+test("the cold end is near-white, the warm end is amber", () => {
+  // Not neutral: the range is compressed warm on purpose, because a colour
+  // bulb's unsaturated white reads colder than the white-tunable bulb it is
+  // standing next to. Pale, but with the room's tint in it.
   const [coldHue, coldSaturation] = temperatureToHueSaturation(0);
-  assert.ok(coldSaturation < 0.05, `cold saturation ${coldSaturation} is not white`);
+  assert.ok(coldSaturation < 0.25, `cold saturation ${coldSaturation} is not pale`);
+  assert.ok(coldSaturation > 0, `cold saturation ${coldSaturation} lost the tint`);
   assert.ok(coldHue >= 0 && coldHue <= 1);
 
   const [warmHue, warmSaturation] = temperatureToHueSaturation(1);
-  assert.ok(warmSaturation > 0.6, `warm saturation ${warmSaturation} is too pale`);
+  assert.ok(warmSaturation > 0.8, `warm saturation ${warmSaturation} is too pale`);
   // Amber sits around 30 degrees, a twelfth of the way round the wheel.
   assert.ok(warmHue > 0.04 && warmHue < 0.12, `warm hue ${warmHue} is not amber`);
 });

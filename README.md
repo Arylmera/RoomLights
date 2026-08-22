@@ -5,7 +5,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 | | |
 |---|---|
 | App ID | `inc.lemer.roomLights` |
-| Version | 1.6.0 |
+| Version | 1.6.1 |
 | Homey SDK | 3 |
 | Compatibility | Homey `>=12.9.0`, platform `local` |
 | Category | lights |
@@ -149,9 +149,17 @@ Common arguments:
 
 A `light_temperature` write only reaches a bulb that has a white channel. A colour-only bulb used to keep whatever hue it was last given while every other lamp in the room walked the circadian curve — visibly out of step, and easy to mistake for a light the app had stopped managing.
 
-So a light that exposes `light_hue` but not `light_temperature` gets the same temperature converted to hue and saturation: 0–1 is mapped onto 6500 K–2200 K, through the standard blackbody approximation of the Planckian locus, and the resulting colour's value channel is discarded because `dim` already carries the brightness. A bulb that has both capabilities is untouched by this and still takes the temperature directly.
+So a light that exposes `light_hue` but not `light_temperature` gets the same temperature converted to hue and saturation: 0–1 is mapped onto 5000 K–2000 K, through the standard blackbody approximation of the Planckian locus, and the resulting colour's value channel is discarded because `dim` already carries the brightness. A bulb that has both capabilities is untouched by this and still takes the temperature directly.
 
-The two Kelvin bounds are Hue's range and are the only knob here: a lamp that still reads colder than the room's ceiling lights at the warm end wants the warm bound lowered, in [`lib/whitepoint.js`](lib/whitepoint.js). The match is an approximation and always will be — an RGB bulb has three narrow-band emitters where a white-tunable one has a phosphor, and no arithmetic reconciles that. At the cold end the result is near-white rather than exactly `#FFFFFF`, which is what a real 6500 K bulb looks like next to one.
+Those two bounds are **warmer than the 6500 K–2200 K a white-tunable bulb actually spans**, and deliberately so. The two kinds of bulb do not share a white point: a colour bulb at zero saturation is running its three primaries flat out, which is a cold display white, while a white-tunable bulb's white is already a warm phosphor. Converting the temperature faithfully is measured right and perceived wrong — the lamp reads visibly paler than the one beside it. Compressing the range puts the same input further down the locus and restores the match:
+
+| `temperature` | Hue | Saturation |
+|---|---|---|
+| 0 (cold) | 27° | 0.19 |
+| 0.5 (midday circadian) | 27° | 0.45 |
+| 1 (warm) | 31° | 0.95 |
+
+These are the only knob, in [`lib/whitepoint.js`](lib/whitepoint.js): lower both bounds for more colour, raise both for less. The match stays an approximation whatever you pick — three narrow-band emitters against a phosphor is not a difference arithmetic reconciles. Note that the cold end is no longer neutral white, which is the price of the compression and the point of it.
 
 ### `setroomlightsrole`
 
