@@ -140,10 +140,18 @@ Common arguments:
 | `role` | dropdown | `All` · `Main only` · `Ambient only` |
 | `state` | dropdown | `All lights` · `Only lights already on` — the second leaves lights that are currently off untouched, so an evening dim doesn't wake a lamp nobody switched on |
 | `brightness` | range 0–1, step 0.01 (shown as 0–100 %) | Anything at or below the [off threshold](#the-off-threshold) turns the lights **off** instead of dimming them to almost nothing |
-| `temperature` | range 0–1, step 0.01 | Only applied to lights that expose `light_temperature` |
+| `temperature` | range 0–1, step 0.01 | A colour bulb with no `light_temperature` takes the [nearest hue and saturation](#colour-bulbs-and-white-temperature) instead |
 | `color` | colour picker (`#RRGGBB`) | Converted to HSV; plain white bulbs take the brightness and ignore it |
 
 `role` and `state` are independent.
+
+### Colour bulbs and white temperature
+
+A `light_temperature` write only reaches a bulb that has a white channel. A colour-only bulb used to keep whatever hue it was last given while every other lamp in the room walked the circadian curve — visibly out of step, and easy to mistake for a light the app had stopped managing.
+
+So a light that exposes `light_hue` but not `light_temperature` gets the same temperature converted to hue and saturation: 0–1 is mapped onto 6500 K–2200 K, through the standard blackbody approximation of the Planckian locus, and the resulting colour's value channel is discarded because `dim` already carries the brightness. A bulb that has both capabilities is untouched by this and still takes the temperature directly.
+
+The two Kelvin bounds are Hue's range and are the only knob here: a lamp that still reads colder than the room's ceiling lights at the warm end wants the warm bound lowered, in [`lib/whitepoint.js`](lib/whitepoint.js). The match is an approximation and always will be — an RGB bulb has three narrow-band emitters where a white-tunable one has a phosphor, and no arithmetic reconciles that. At the cold end the result is near-white rather than exactly `#FFFFFF`, which is what a real 6500 K bulb looks like next to one.
 
 ### `setroomlightsrole`
 

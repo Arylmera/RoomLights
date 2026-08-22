@@ -10,6 +10,7 @@ const {
   setpointBrightness,
   validDaylight,
 } = require("./lib/daylight");
+const { temperatureToHueSaturation } = require("./lib/whitepoint");
 
 // Rebuilds are debounced so a burst of events (pairing several devices, moving
 // a room around) collapses into a single rebuild...
@@ -492,8 +493,18 @@ class RoomLights extends Homey.App {
 
   async setLightsBrightness(room, brightness, temperature, options) {
     await this.applyBrightness(room, brightness, options, async (device, duration) => {
-      if (temperature != null && device.capabilities.includes("light_temperature")) {
+      if (temperature == null) return;
+      if (device.capabilities.includes("light_temperature")) {
         await this.write(device, "light_temperature", temperature, duration);
+        return;
+      }
+      // A colour bulb with no white channel: approximate the same white point
+      // with hue and saturation, so it walks the circadian curve with the rest
+      // of the room instead of holding whatever colour it was last given.
+      if (device.capabilities.includes("light_hue")) {
+        const [hue, saturation] = temperatureToHueSaturation(temperature);
+        await this.write(device, "light_hue", hue, duration);
+        await this.write(device, "light_saturation", saturation, duration);
       }
     });
   }
