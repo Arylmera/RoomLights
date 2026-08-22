@@ -5,7 +5,7 @@ A [Homey](https://homey.app) app that lets you control **every light in a zone a
 | | |
 |---|---|
 | App ID | `inc.lemer.roomLights` |
-| Version | 1.5.0 |
+| Version | 1.6.0 |
 | Homey SDK | 3 |
 | Compatibility | Homey `>=12.9.0`, platform `local` |
 | Category | lights |

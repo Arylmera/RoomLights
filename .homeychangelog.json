@@ -21,5 +21,9 @@
   "1.5.0": {
     "en": "A room can now hold a measured level instead of following the daylight: say what its sensor reads when the room is fully lit, and it converges there and stays. Light sensors sit in the rooms they light, which is what holding a level is actually good for, so it is the new default. Following the daylight is still there for a room that has to be right immediately.",
     "fr": "Une pièce peut désormais maintenir un niveau mesuré au lieu de suivre la lumière du jour : indiquez ce que son capteur mesure lorsque la pièce est pleinement éclairée, et elle y converge puis s'y tient. Les capteurs se trouvent dans les pièces qu'ils éclairent, ce à quoi le maintien d'un niveau correspond vraiment : c'est le nouveau mode par défaut. Suivre la lumière du jour reste disponible pour une pièce qui doit être juste immédiatement."
+  },
+  "1.6.0": {
+    "en": "Colour bulbs now follow the room's white temperature. A bulb with no white channel used to keep whatever colour it was last given while every other lamp in the room warmed through the evening; it is now given the nearest hue and saturation instead, so the whole room stays in step. Bulbs that can set a white temperature themselves are unaffected.",
+    "fr": "Les ampoules couleur suivent désormais la température de blanc de la pièce. Une ampoule sans canal blanc conservait la dernière couleur reçue pendant que toutes les autres lampes se réchauffaient au fil de la soirée ; elle reçoit maintenant la teinte et la saturation les plus proches, et la pièce reste homogène. Les ampoules capables de régler elles-mêmes une température de blanc ne changent pas."
   }
 }
