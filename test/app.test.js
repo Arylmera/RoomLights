@@ -1470,6 +1470,35 @@ test("daylight bright enough to fall through the off threshold turns the room of
   assert.deepStrictEqual(calls, [["onoff", false]]);
 });
 
+// The bug this replaced: the swing is added to the circadian value before the
+// off threshold is applied, so a room whose circadian variable had reached 0
+// came on at +swing instead of going dark — a night-time room left glowing.
+test("a circadian value of off stays off however dark the room is", async () => {
+  const { app, calls } = daylightApp({ lux: 1, circadian: 0 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.deepStrictEqual(calls, [["onoff", false]], "daylight may dim a lit room, never light a dark one");
+});
+
+test("a circadian value under the off threshold stays off", async () => {
+  const { app, calls } = daylightApp({ lux: 1, circadian: 0.04 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  assert.deepStrictEqual(calls, [["onoff", false]]);
+});
+
+// Turning a room off has to stop the loop that keeps correcting it, or the next
+// reading finds a light that still reads on — an unreachable bulb is enough,
+// isOn() counts an unknown state as on — and lights the whole room again.
+test("turning a room off stops it being tracked", async () => {
+  const { app, instances } = daylightApp({ lux: 10 });
+  await app.buildRoomLightsZones();
+  await app.setRoomLightsAuto(salonRoom, {});
+  await app.turnOffRoomLights(salonRoom, "all");
+  assert.strictEqual(app.daylightTracking.size, 0, "an off room is not a room to keep correcting");
+  assert.strictEqual(instances.destroyed, 1);
+});
+
 test("the automatic card subscribes to the room's lux sensor exactly once", async () => {
   const { app, instances } = daylightApp({});
   await app.buildRoomLightsZones();

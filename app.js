@@ -479,9 +479,17 @@ class RoomLights extends Homey.App {
   async applyBrightness(room, brightness, options, tint) {
     const opts = options || {};
     const lights = await this.roomLights(room, opts.role, opts.state);
-    const offBelow = this.offBelow();
+    // Room-level, not per-device: the same brightness reaches every light, so
+    // "this card leaves the room dark" is decided once.
+    const dark = brightness <= this.offBelow();
+    if (dark) {
+      // A daylight loop that outlives the room going dark is how a room lights
+      // itself again five minutes later: the next review only needs one light
+      // still reading on — and isOn() counts an unreachable one as on.
+      this.disarmDaylight(room.id);
+    }
     await this.eachLight(lights, async (device) => {
-      if (brightness <= offBelow) {
+      if (dark) {
         await this.write(device, "onoff", false, opts.duration);
         return;
       }
@@ -525,6 +533,9 @@ class RoomLights extends Homey.App {
   }
 
   async turnOffRoomLights(room, role) {
+    // Same reason as the off branch of applyBrightness: stop correcting a room
+    // that was just asked to go dark.
+    this.disarmDaylight(room.id);
     const lights = await this.roomLights(room, role);
     await this.eachLight(lights, (device) => this.write(device, "onoff", false));
   }
@@ -737,6 +748,15 @@ class RoomLights extends Homey.App {
   async daylightAdjusted(room, circadian, commanded) {
     const config = this.roomDaylight(room.id);
     if (config == null) {
+      return circadian;
+    }
+    // A room the circadian curve has already switched off stays off. Daylight
+    // modulates a room that is meant to be lit; it may not light a dark one.
+    // Without this, follow mode adds the swing to a circadian 0 and a room at
+    // the end of its evening curve came on at +swing instead of going dark,
+    // and hold mode — whose target is fullLux * 0 — left the room exactly
+    // where it was. Both read as "the lights never fully switch off".
+    if (circadian <= this.offBelow()) {
       return circadian;
     }
     const lux = await this.daylightLux(config);

@@ -1,6 +1,6 @@
 {
   "name": "inc.lemer.roomLights",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "main": "app.js",
   "scripts": {
     "test": "node --test"
