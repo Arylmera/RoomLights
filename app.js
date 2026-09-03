@@ -473,8 +473,8 @@ class RoomLights extends Homey.App {
   // threshold is applied on this path — a guard per card would be a larger diff
   // that still left the next card to be written broken. Brightness at or below
   // the threshold means off; any brightness above it means on at that level,
-  // with onoff written first because writing dim alone leaves a light that was
-  // off in a device-dependent state. `tint` writes whatever colour aspect the
+  // see dimFirst() for which of onoff and dim goes out first. `tint` writes
+  // whatever colour aspect the
   // calling card carries, if any.
   async applyBrightness(room, brightness, options, tint) {
     const opts = options || {};
@@ -488,15 +488,44 @@ class RoomLights extends Homey.App {
       // still reading on — and isOn() counts an unreachable one as on.
       this.disarmDaylight(room.id);
     }
+    const live = dark ? null : await this.freshDevices();
     await this.eachLight(lights, async (device) => {
       if (dark) {
         await this.write(device, "onoff", false, opts.duration);
         return;
       }
-      await this.write(device, "onoff", true);
-      await this.write(device, "dim", brightness, opts.duration);
+      if (this.dimFirst(device, live[device.id], brightness)) {
+        // A bulb that is off comes back at its last level the instant onoff
+        // arrives, then fades to the target: a flash in a dark room. Dim first
+        // lights it straight at the target (Hue turns on implicitly for a dim
+        // above 0); onoff only follows for a driver that stayed dark.
+        await this.write(device, "dim", brightness, opts.duration);
+        const after = (await this.freshDevices())[device.id];
+        if (after == null || !this.isOn(after)) {
+          await this.write(device, "onoff", true);
+        }
+      } else {
+        await this.write(device, "onoff", true);
+        await this.write(device, "dim", brightness, opts.duration);
+      }
       await tint(device, opts.duration);
     });
+  }
+
+  // Dim before onoff when the light is off or heading down; a light without
+  // dim, or one whose state is unreadable, keeps the onoff-first order.
+  dimFirst(device, current, brightness) {
+    if (!(device.capabilities || []).includes("dim") || current == null) {
+      return false;
+    }
+    const caps = current.capabilitiesObj;
+    if (caps == null || caps.onoff == null) {
+      return false;
+    }
+    if (caps.onoff.value !== true) {
+      return true;
+    }
+    return caps.dim != null && typeof caps.dim.value === "number" && brightness < caps.dim.value;
   }
 
   async setLightsBrightness(room, brightness, temperature, options) {

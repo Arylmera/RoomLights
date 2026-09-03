@@ -461,6 +461,20 @@ test("onoff true is written before the brightness", async () => {
   assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.4]]);
 });
 
+// A Hue bulb that is off comes back at its last level the moment onoff
+// arrives, then fades down to the target: a flash in a dark bathroom. Off, or
+// heading down, dim goes out first and onoff only follows a driver that stayed
+// dark after it.
+test("a light that is off gets dim before onoff", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim"]);
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { ...bulb, capabilitiesObj: { onoff: { value: false }, dim: { value: 0.86 } } },
+  });
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.475, null, { duration: 2000 });
+  assert.deepStrictEqual(calls, [["dim", 0.475, { duration: 2000 }], ["onoff", true]]);
+});
+
 test("brightness 0 turns off and never writes onoff true", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
@@ -723,7 +737,8 @@ test("toggle turns the lights on at the given brightness, without touching tempe
   const { app, calls } = toggleApp(false);
   await app.buildRoomLightsZones();
   await app.toggleRoomLights({ id: "a" }, "all", 0.6);
-  assert.deepStrictEqual(calls, [["onoff", true], ["dim", 0.6]]);
+  // The light is off, so dim leads and onoff follows, see dimFirst().
+  assert.deepStrictEqual(calls, [["dim", 0.6], ["onoff", true]]);
 });
 
 // Reading devices is a full house dump over the local API. These tests pin the
@@ -1517,8 +1532,9 @@ test("a new sensor reading drives a review", async () => {
 
   sensor.capabilitiesObj.measure_luminance.value = 90;
   await instances.listener(90);
-  assert.strictEqual(calls.length, 2, "the subscription must actually re-evaluate the room");
-  near(calls[1][1], 0.309, 0.002, "a bright room is dimmed toward the bottom of the swing");
+  // Dimming an on light down is a single dim write, see dimFirst().
+  assert.strictEqual(calls.length, 1, "the subscription must actually re-evaluate the room");
+  near(calls[0][1], 0.309, 0.002, "a bright room is dimmed toward the bottom of the swing");
 });
 
 test("a change inside the deadband writes nothing", async () => {
@@ -1535,7 +1551,7 @@ test("a change inside the deadband writes nothing", async () => {
 
   sensor.capabilitiesObj.measure_luminance.value = 90;
   await app.reviewDaylight("salon");
-  assert.strictEqual(calls.length, 2, "a real change is still applied");
+  assert.strictEqual(calls.length, 1, "a real change is still applied");
 });
 
 // This is also how daylight stops itself once it has dimmed a room through the
@@ -1769,7 +1785,7 @@ test("a review keeps the role and state filter the card was run with", async () 
 
   sensor.capabilitiesObj.measure_luminance.value = 90;
   await app.reviewDaylight("salon");
-  assert.strictEqual(calls.length, 2, "the lights the card included are still corrected");
+  assert.strictEqual(calls.length, 1, "the lights the card included are still corrected");
   assert.deepStrictEqual(ambientCalls, [], "a light the card excluded must not be swept in later");
 });
 
@@ -1883,7 +1899,7 @@ test("a write that fails outright is retried rather than swallowed by the deadba
 
   bulb.setCapabilityValue = write;
   await app.reviewDaylight("salon");
-  assert.strictEqual(calls.length, 2, "a level the room never reached must not suppress the retry");
+  assert.strictEqual(calls.length, 1, "a level the room never reached must not suppress the retry");
 });
 
 // ------------------------------------------------------------- holding a level
