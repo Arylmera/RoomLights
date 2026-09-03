@@ -475,6 +475,25 @@ test("a light that is off gets dim before onoff", async () => {
   assert.deepStrictEqual(calls, [["dim", 0.475, { duration: 2000 }], ["onoff", true]]);
 });
 
+// The driver turns on implicitly and reports it a moment later: the grace
+// reads see it, and the fallback onoff is never sent.
+test("a light that comes on after the dim gets no onoff", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim"]);
+  // Off until a dim above 0 is written, like a Hue bulb.
+  let on = false;
+  const write = bulb.setCapabilityValue;
+  bulb.setCapabilityValue = async (cap, value, opts) => {
+    if (cap === "dim" && value > 0) on = true;
+    return write(cap, value, opts);
+  };
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { ...bulb, capabilitiesObj: { onoff: { value: on }, dim: { value: on ? 0.475 : 0.86 } } },
+  });
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.475, null);
+  assert.deepStrictEqual(calls, [["dim", 0.475]]);
+});
+
 test("brightness 0 turns off and never writes onoff true", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();

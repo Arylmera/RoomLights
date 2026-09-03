@@ -66,6 +66,12 @@ const MODELLED_INTERVAL_MS = 5 * 60 * 1000;
 // timestamp can tell the difference.
 const WEATHER_STALE_MS = 3 * 60 * 60 * 1000;
 
+// After a dim that should have turned a light on, how many extra reads to
+// allow, and how far apart, before concluding the driver needs an explicit
+// onoff. Zigbee round-trip plus state report is well under a second on Hue.
+const ONOFF_SETTLE_READS = 2;
+const ONOFF_SETTLE_MS = 250;
+
 const LUX_CAPABILITY = "measure_luminance";
 const CLOUD_CAPABILITY = "measure_cloudiness";
 
@@ -500,8 +506,7 @@ class RoomLights extends Homey.App {
         // lights it straight at the target (Hue turns on implicitly for a dim
         // above 0); onoff only follows for a driver that stayed dark.
         await this.write(device, "dim", brightness, opts.duration);
-        const after = (await this.freshDevices())[device.id];
-        if (after == null || !this.isOn(after)) {
+        if (!(await this.cameOn(device))) {
           await this.write(device, "onoff", true);
         }
       } else {
@@ -510,6 +515,24 @@ class RoomLights extends Homey.App {
       }
       await tint(device, opts.duration);
     });
+  }
+
+  // Whether a light reports on after a dim. A driver that turns on implicitly
+  // (Hue) does not report it in the same instant, so a single read right after
+  // the write is stale more often than not and would send a needless onoff.
+  // Give the state a short grace period before falling back to onoff.
+  async cameOn(device) {
+    for (let attempt = 0; ; attempt += 1) {
+      const fresh = (await this.freshDevices())[device.id];
+      if (fresh != null && this.isOn(fresh)) {
+        return true;
+      }
+      if (attempt >= ONOFF_SETTLE_READS) {
+        return false;
+      }
+      this.invalidateDevices();
+      await new Promise((resolve) => setTimeout(resolve, ONOFF_SETTLE_MS));
+    }
   }
 
   // Dim before onoff when the light is off or heading down; a light without
