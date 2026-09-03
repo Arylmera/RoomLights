@@ -505,15 +505,30 @@ class RoomLights extends Homey.App {
         // arrives, then fades to the target: a flash in a dark room. Dim first
         // lights it straight at the target (Hue turns on implicitly for a dim
         // above 0); onoff only follows for a driver that stayed dark.
+        //
+        // The tint goes out before the dim for the same reason: a bulb that
+        // is off comes on at its last colour otherwise, then shifts. Hue v2
+        // accepts a colour on a lamp that is off and remembers it. A driver
+        // that rejects it gets the old dim-then-tint order instead.
+        let tinted = false;
+        try {
+          await tint(device, opts.duration);
+          tinted = true;
+        } catch (err) {
+          this.log("Tint refused while off, writing it after the dim", err);
+        }
         await this.write(device, "dim", brightness, opts.duration);
         if (!(await this.cameOn(device))) {
           await this.write(device, "onoff", true);
         }
+        if (!tinted) {
+          await tint(device, opts.duration);
+        }
       } else {
         await this.write(device, "onoff", true);
         await this.write(device, "dim", brightness, opts.duration);
+        await tint(device, opts.duration);
       }
-      await tint(device, opts.duration);
     });
   }
 

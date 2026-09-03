@@ -465,14 +465,39 @@ test("onoff true is written before the brightness", async () => {
 // arrives, then fades down to the target: a flash in a dark bathroom. Off, or
 // heading down, dim goes out first and onoff only follows a driver that stayed
 // dark after it.
-test("a light that is off gets dim before onoff", async () => {
-  const { app, calls, bulb } = recordingApp(["onoff", "dim"]);
+// The temperature leads too: an off bulb otherwise comes on at its last, daytime
+// white and then shifts warm. Hue remembers a colour written while off.
+test("a light that is off gets tint, then dim, then onoff", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim", "light_temperature"]);
   app.homeyApi.devices.getDevices = async () => ({
     1: { ...bulb, capabilitiesObj: { onoff: { value: false }, dim: { value: 0.86 } } },
   });
   await app.buildRoomLightsZones();
-  await app.setLightsBrightness({ id: "a" }, 0.475, null, { duration: 2000 });
-  assert.deepStrictEqual(calls, [["dim", 0.475, { duration: 2000 }], ["onoff", true]]);
+  await app.setLightsBrightness({ id: "a" }, 0.475, 0.7, { duration: 2000 });
+  assert.deepStrictEqual(calls, [
+    ["light_temperature", 0.7, { duration: 2000 }],
+    ["dim", 0.475, { duration: 2000 }],
+    ["onoff", true],
+  ]);
+});
+
+// A driver that refuses a colour on a lamp that is off gets the old order.
+test("a tint refused while off is written after the dim instead", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim", "light_temperature"]);
+  let on = false;
+  const write = bulb.setCapabilityValue;
+  bulb.setCapabilityValue = async (cap, value, opts) => {
+    if (cap === "light_temperature" && !on) throw new Error("device is off");
+    if (cap === "dim" && value > 0) on = true;
+    return write(cap, value, opts);
+  };
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { ...bulb, capabilitiesObj: { onoff: { value: on }, dim: { value: 0.86 } } },
+  });
+  app.log = () => {};
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0.475, 0.7);
+  assert.deepStrictEqual(calls, [["dim", 0.475], ["light_temperature", 0.7]]);
 });
 
 // The driver turns on implicitly and reports it a moment later: the grace
