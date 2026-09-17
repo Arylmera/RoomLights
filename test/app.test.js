@@ -519,6 +519,52 @@ test("a light that comes on after the dim gets no onoff", async () => {
   assert.deepStrictEqual(calls, [["dim", 0.475]]);
 });
 
+// The kitchen on 2026-09-17 12:42: its own trigger rendered Side, and one
+// second later the living-room handler cascaded Off. The off landed first,
+// then the Side render's dim arrived and the Hue bulb came back on 13 ms after
+// going dark. A newer call on the room must silence what the older one still
+// has to send.
+test("a render overtaken by a newer call on the room sends nothing more", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim", "light_temperature"]);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const write = bulb.setCapabilityValue;
+  bulb.setCapabilityValue = async (cap, value, opts) => {
+    const result = write(cap, value, opts);
+    if (cap === "light_temperature") await gate;
+    return result;
+  };
+  app.homeyApi.devices.getDevices = async () => ({
+    1: { ...bulb, capabilitiesObj: { onoff: { value: false }, dim: { value: 0.86 } } },
+  });
+  await app.buildRoomLightsZones();
+  const side = app.setLightsBrightness({ id: "a" }, 0.21, 0.4);
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.setLightsBrightness({ id: "a" }, 0, 0.4);
+  release();
+  await side;
+  assert.deepStrictEqual(calls, [["light_temperature", 0.4], ["onoff", false]]);
+});
+
+test("turnOffRoomLights also overtakes a render in flight", async () => {
+  const { app, calls, bulb } = recordingApp(["onoff", "dim"]);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const write = bulb.setCapabilityValue;
+  bulb.setCapabilityValue = async (cap, value, opts) => {
+    const result = write(cap, value, opts);
+    if (cap === "onoff" && value === true) await gate;
+    return result;
+  };
+  await app.buildRoomLightsZones();
+  const on = app.setLightsBrightness({ id: "a" }, 0.4, null);
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.turnOffRoomLights({ id: "a" });
+  release();
+  await on;
+  assert.deepStrictEqual(calls, [["onoff", true], ["onoff", false]]);
+});
+
 test("brightness 0 turns off and never writes onoff true", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();

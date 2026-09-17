@@ -113,6 +113,15 @@ class RoomLights extends Homey.App {
   daylightTracking = new Map();
   daylightGen = 0;
 
+  // room id -> generation of the latest set/off call on that room. Two cards
+  // can land on one room a second apart — the room's own trigger rendering
+  // Side, then the living-room handler cascading Off — and the slower render
+  // must not finish after the newer one: a dim that lands after the off lights
+  // the room back up (Hue turns on implicitly for a dim above 0). Every render
+  // takes a generation on entry and drops the writes it has not sent yet once
+  // a newer call owns the room.
+  renderGen = new Map();
+
   // ---------------------------------------------------------------- lifecycle
 
   /**
@@ -455,6 +464,23 @@ class RoomLights extends Homey.App {
   // so a duration passed as a sibling of `value` is silently dropped and the
   // light snaps instead of fading. See node-homey-api Device.js
   // #setCapabilityValue: `@param {number} [opts.opts.duration]`.
+  takeRender(roomId) {
+    const gen = (this.renderGen.get(roomId) || 0) + 1;
+    this.renderGen.set(roomId, gen);
+    return gen;
+  }
+
+  // A write bound to one render of a room: a no-op once a newer call has taken
+  // the room over, so a stale render cannot undo the one that replaced it.
+  renderWriter(roomId, gen) {
+    return (device, capabilityId, value, duration) => {
+      if (this.renderGen.get(roomId) !== gen) {
+        return Promise.resolve();
+      }
+      return this.write(device, capabilityId, value, duration);
+    };
+  }
+
   async write(device, capabilityId, value, duration) {
     // Our own command makes every cached read of this house stale.
     this.invalidateDevices();
@@ -484,6 +510,7 @@ class RoomLights extends Homey.App {
   // calling card carries, if any.
   async applyBrightness(room, brightness, options, tint) {
     const opts = options || {};
+    const write = this.renderWriter(room.id, this.takeRender(room.id));
     const lights = await this.roomLights(room, opts.role, opts.state);
     // Room-level, not per-device: the same brightness reaches every light, so
     // "this card leaves the room dark" is decided once.
@@ -497,7 +524,7 @@ class RoomLights extends Homey.App {
     const live = dark ? null : await this.freshDevices();
     await this.eachLight(lights, async (device) => {
       if (dark) {
-        await this.write(device, "onoff", false, opts.duration);
+        await write(device, "onoff", false, opts.duration);
         return;
       }
       if (this.dimFirst(device, live[device.id], brightness)) {
@@ -512,22 +539,22 @@ class RoomLights extends Homey.App {
         // that rejects it gets the old dim-then-tint order instead.
         let tinted = false;
         try {
-          await tint(device, opts.duration);
+          await tint(device, opts.duration, write);
           tinted = true;
         } catch (err) {
           this.log("Tint refused while off, writing it after the dim", err);
         }
-        await this.write(device, "dim", brightness, opts.duration);
+        await write(device, "dim", brightness, opts.duration);
         if (!(await this.cameOn(device))) {
-          await this.write(device, "onoff", true);
+          await write(device, "onoff", true);
         }
         if (!tinted) {
-          await tint(device, opts.duration);
+          await tint(device, opts.duration, write);
         }
       } else {
-        await this.write(device, "onoff", true);
-        await this.write(device, "dim", brightness, opts.duration);
-        await tint(device, opts.duration);
+        await write(device, "onoff", true);
+        await write(device, "dim", brightness, opts.duration);
+        await tint(device, opts.duration, write);
       }
     });
   }
@@ -567,10 +594,10 @@ class RoomLights extends Homey.App {
   }
 
   async setLightsBrightness(room, brightness, temperature, options) {
-    await this.applyBrightness(room, brightness, options, async (device, duration) => {
+    await this.applyBrightness(room, brightness, options, async (device, duration, write) => {
       if (temperature == null) return;
       if (device.capabilities.includes("light_temperature")) {
-        await this.write(device, "light_temperature", temperature, duration);
+        await write(device, "light_temperature", temperature, duration);
         return;
       }
       // A colour bulb with no white channel: approximate the same white point
@@ -578,18 +605,18 @@ class RoomLights extends Homey.App {
       // of the room instead of holding whatever colour it was last given.
       if (device.capabilities.includes("light_hue")) {
         const [hue, saturation] = temperatureToHueSaturation(temperature);
-        await this.write(device, "light_hue", hue, duration);
-        await this.write(device, "light_saturation", saturation, duration);
+        await write(device, "light_hue", hue, duration);
+        await write(device, "light_saturation", saturation, duration);
       }
     });
   }
 
   async setLightsColors(room, brightness, hue, saturation, options) {
-    await this.applyBrightness(room, brightness, options, async (device, duration) => {
+    await this.applyBrightness(room, brightness, options, async (device, duration, write) => {
       // Lights without a hue capability just take the brightness.
       if (device.capabilities.includes("light_hue")) {
-        await this.write(device, "light_hue", hue, duration);
-        await this.write(device, "light_saturation", saturation, duration);
+        await write(device, "light_hue", hue, duration);
+        await write(device, "light_saturation", saturation, duration);
       }
     });
   }
@@ -603,8 +630,9 @@ class RoomLights extends Homey.App {
     // Same reason as the off branch of applyBrightness: stop correcting a room
     // that was just asked to go dark.
     this.disarmDaylight(room.id);
+    const write = this.renderWriter(room.id, this.takeRender(room.id));
     const lights = await this.roomLights(room, role);
-    await this.eachLight(lights, (device) => this.write(device, "onoff", false));
+    await this.eachLight(lights, (device) => write(device, "onoff", false));
   }
 
   // Relative dim only touches lights that are already on: dimming "up" must
