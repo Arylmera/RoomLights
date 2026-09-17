@@ -392,6 +392,8 @@ Install the app on your own Homey:
 homey app install
 ```
 
+Never add `--clean` to that on a Homey you rely on: it purges the app's settings store — light roles, room mappings, the off threshold, daylight — and nothing on the Homey backs those up. A build that fails with "Missing File" is cured by deleting `.homeybuild/` and installing again. If you must reinstall from scratch, read `GET /api/manager/apps/app/inc.lemer.roomLights/setting` first and put the values back through `PUT /api/app/inc.lemer.roomLights/defaults` and `/roles` afterwards.
+
 Run it with live logs instead (stops when you disconnect):
 
 ```bash
