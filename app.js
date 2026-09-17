@@ -72,6 +72,14 @@ const WEATHER_STALE_MS = 3 * 60 * 60 * 1000;
 const ONOFF_SETTLE_READS = 2;
 const ONOFF_SETTLE_MS = 250;
 
+// A room told to go dark is looked at again this long after, and told off once
+// more if a light is back on. A lone Hue spot came back 41 s after a group off
+// on 2026-09-17 with nothing in Homey asking for it, past the +15 s the
+// watchdog Flow looks at. Every check is dropped the moment a newer set/off
+// call takes the room (see renderGen), so a room that has since been asked for
+// light is never switched off behind its back.
+const OFF_RECHECK_MS = [60 * 1000, 90 * 1000];
+
 const LUX_CAPABILITY = "measure_luminance";
 const CLOUD_CAPABILITY = "measure_cloudiness";
 
@@ -121,6 +129,9 @@ class RoomLights extends Homey.App {
   // takes a generation on entry and drops the writes it has not sent yet once
   // a newer call owns the room.
   renderGen = new Map();
+
+  // room id -> the timers of the off re-checks armed by its latest dark render.
+  offRechecks = new Map();
 
   // ---------------------------------------------------------------- lifecycle
 
@@ -183,6 +194,9 @@ class RoomLights extends Homey.App {
   // left them running would keep a torn-down app writing to bulbs.
   async onUninit() {
     this.disarmAllDaylight();
+    for (const roomId of [...this.offRechecks.keys()]) {
+      this.disarmOffRecheck(roomId);
+    }
   }
 
   /**
@@ -465,9 +479,46 @@ class RoomLights extends Homey.App {
   // light snaps instead of fading. See node-homey-api Device.js
   // #setCapabilityValue: `@param {number} [opts.opts.duration]`.
   takeRender(roomId) {
+    // Whatever the previous render still meant to verify is its business no
+    // longer: the room has a new owner.
+    this.disarmOffRecheck(roomId);
     const gen = (this.renderGen.get(roomId) || 0) + 1;
     this.renderGen.set(roomId, gen);
     return gen;
+  }
+
+  armOffRecheck(room, role, gen, write) {
+    this.disarmOffRecheck(room.id);
+    const where = room.name || room.id;
+    const timers = OFF_RECHECK_MS.map((ms) =>
+      this.homey.setTimeout(
+        () => this.recheckOff(room, role, gen, write).catch((err) => this.error(`Off re-check failed for ${where}`, err)),
+        ms,
+      ),
+    );
+    this.offRechecks.set(room.id, timers);
+  }
+
+  disarmOffRecheck(roomId) {
+    for (const timer of this.offRechecks.get(roomId) || []) {
+      this.homey.clearTimeout(timer);
+    }
+    this.offRechecks.delete(roomId);
+  }
+
+  // The generation is checked here as well as in the writer: a room whose
+  // status moved on since the off must not even be read, let alone corrected.
+  async recheckOff(room, role, gen, write) {
+    if (this.renderGen.get(room.id) !== gen) {
+      return;
+    }
+    this.invalidateDevices();
+    const lit = await this.roomLights(room, role, "on");
+    if (lit.length === 0) {
+      return;
+    }
+    this.log(`${room.name || room.id}: ${lit.length} light(s) back on after the off, sending it again`);
+    await this.eachLight(lit, (device) => write(device, "onoff", false));
   }
 
   // A write bound to one render of a room: a no-op once a newer call has taken
@@ -510,7 +561,8 @@ class RoomLights extends Homey.App {
   // calling card carries, if any.
   async applyBrightness(room, brightness, options, tint) {
     const opts = options || {};
-    const write = this.renderWriter(room.id, this.takeRender(room.id));
+    const gen = this.takeRender(room.id);
+    const write = this.renderWriter(room.id, gen);
     const lights = await this.roomLights(room, opts.role, opts.state);
     // Room-level, not per-device: the same brightness reaches every light, so
     // "this card leaves the room dark" is decided once.
@@ -557,6 +609,9 @@ class RoomLights extends Homey.App {
         await tint(device, opts.duration, write);
       }
     });
+    if (dark) {
+      this.armOffRecheck(room, opts.role, gen, write);
+    }
   }
 
   // Whether a light reports on after a dim. A driver that turns on implicitly
@@ -630,9 +685,11 @@ class RoomLights extends Homey.App {
     // Same reason as the off branch of applyBrightness: stop correcting a room
     // that was just asked to go dark.
     this.disarmDaylight(room.id);
-    const write = this.renderWriter(room.id, this.takeRender(room.id));
+    const gen = this.takeRender(room.id);
+    const write = this.renderWriter(room.id, gen);
     const lights = await this.roomLights(room, role);
     await this.eachLight(lights, (device) => write(device, "onoff", false));
+    this.armOffRecheck(room, role, gen, write);
   }
 
   // Relative dim only touches lights that are already on: dimming "up" must

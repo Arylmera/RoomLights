@@ -565,6 +565,60 @@ test("turnOffRoomLights also overtakes a render in flight", async () => {
   assert.deepStrictEqual(calls, [["onoff", true], ["onoff", false]]);
 });
 
+// A dining spot came back on 41 s after the room went dark, with every scene
+// still Off. The off is verified again at 60 s and 90 s and re-sent to what is
+// lit; a newer call on the room cancels the checks, since the room is no
+// longer meant to be dark.
+function timedApp(capabilities) {
+  const recording = recordingApp(capabilities);
+  const timers = [];
+  recording.app.homey.setTimeout = (fn, ms) => {
+    const timer = { fn, ms, cleared: false };
+    timers.push(timer);
+    return timer;
+  };
+  recording.app.homey.clearTimeout = (timer) => {
+    timer.cleared = true;
+  };
+  recording.app.log = () => {};
+  return { ...recording, timers };
+}
+
+test("a room still off is checked again and a light back on is told off once more", async () => {
+  const { app, calls, bulb, timers } = timedApp(["onoff", "dim"]);
+  let on = true;
+  app.homeyApi.devices.getDevices = async () => ({ 1: { ...bulb, capabilitiesObj: { onoff: { value: on } } } });
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0, 0.5);
+  assert.deepStrictEqual(timers.map((t) => t.ms), [60000, 90000]);
+  on = false;
+  await timers[0].fn();
+  assert.deepStrictEqual(calls, [["onoff", false]], "a room that stayed dark is left alone");
+  on = true;
+  await timers[1].fn();
+  assert.deepStrictEqual(calls, [["onoff", false], ["onoff", false]]);
+});
+
+test("a newer call on the room cancels the off re-check", async () => {
+  const { app, calls, bulb, timers } = timedApp(["onoff", "dim"]);
+  app.homeyApi.devices.getDevices = async () => ({ 1: { ...bulb, capabilitiesObj: { onoff: { value: true } } } });
+  await app.buildRoomLightsZones();
+  await app.setLightsBrightness({ id: "a" }, 0, 0.5);
+  await app.setLightsBrightness({ id: "a" }, 0.4, 0.5);
+  assert.ok(timers.slice(0, 2).every((t) => t.cleared), "the dark render's timers are cleared");
+  calls.length = 0;
+  await timers[0].fn();
+  await timers[1].fn();
+  assert.deepStrictEqual(calls, [], "a stale timer that still fires must not switch the room off");
+});
+
+test("turnOffRoomLights arms the same re-check", async () => {
+  const { app, timers } = timedApp(["onoff"]);
+  await app.buildRoomLightsZones();
+  await app.turnOffRoomLights({ id: "a" });
+  assert.deepStrictEqual(timers.map((t) => t.ms), [60000, 90000]);
+});
+
 test("brightness 0 turns off and never writes onoff true", async () => {
   const { app, calls } = recordingApp(["onoff", "dim"]);
   await app.buildRoomLightsZones();
